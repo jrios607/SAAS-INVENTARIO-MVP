@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, Integer, Date, DateTime, ForeignKey, Uuid
 from app.database import Base
 
@@ -7,7 +7,7 @@ class Catalogo_Producto(Base):
     __tablename__ = 'catalogo_producto'
     sku = Column(String, primary_key=True, index=True)
     nombre = Column(String, nullable=False)
-    ean = Column(String, nullable=False)
+    ean = Column(String, nullable=False, unique=True, index=True)
     categoria = Column(String, nullable=True)
     tolerancia_vencimiento_dias = Column(Integer, default=0)
 
@@ -50,5 +50,5 @@ class Log_Transaccional(Base):
     sato_id = Column(Uuid(as_uuid=True), ForeignKey('satos.sato_id'), nullable=False)
     usuario_id = Column(Integer, ForeignKey('usuario.id'), nullable=True)
     accion = Column(String, nullable=False)
-    fecha_hora = Column(DateTime, default=datetime.utcnow)
+    fecha_hora = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     detalles = Column(String, nullable=True)

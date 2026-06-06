@@ -1,17 +1,20 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
-from app.routers import catalogo, bodega, vitrina # 1. Agregas 'vitrina' aquí
-from app.routers import patente
-from app.routers import caja
-from app.routers import merma
-from app.routers import auditoria
+from app.routers import catalogo, bodega, vitrina, patente, caja, merma, auditoria
 
-# Creamos las tablas al iniciar
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="SG - Módulos BVC")
 
-# Conectamos las rutas
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"], 
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(catalogo.router)
 app.include_router(bodega.router)
 app.include_router(vitrina.router) 

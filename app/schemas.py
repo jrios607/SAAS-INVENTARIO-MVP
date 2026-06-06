@@ -1,6 +1,9 @@
 import uuid
-from pydantic import BaseModel
-from typing import Optional
+from datetime import date
+from typing import Optional, List, Dict, Any, Literal
+from pydantic import BaseModel, Field
+
+# ─── Catálogo ───────────────────────────────────────────────
 
 class ProductoCreate(BaseModel):
     sku: str
@@ -13,6 +16,8 @@ class ProductoResponse(BaseModel):
     mensaje: str
     sku: str
 
+# ─── Bodega ─────────────────────────────────────────────────
+
 class PalletReceptionRequest(BaseModel):
     barcode_text: str
 
@@ -21,16 +26,18 @@ class PalletReceptionResponse(BaseModel):
     sato_id: uuid.UUID
     ean_leido: str
 
+# ─── Vitrina ────────────────────────────────────────────────
+
 class SatoFraccionarRequest(BaseModel):
     sato_padre_id: uuid.UUID
     cantidad_a_mover: int
-    planograma_destino_id: Optional[str] = None  # Cambiado de int a str para aceptar patentes como "485"
+    planograma_destino_id: Optional[str] = None
 
 class SatoFraccionarResponse(BaseModel):
     mensaje: str
     sato_hijo_id: uuid.UUID
 
-from datetime import date
+# ─── Patentes ───────────────────────────────────────────────
 
 class PatenteCreate(BaseModel):
     id_patente: str
@@ -51,23 +58,20 @@ class PatenteResponse(BaseModel):
     ancho: int
     largo: int
     url_imagen_planograma: Optional[str] = None
-    
+
     class Config:
         from_attributes = True
-        orm_mode = True
 
 class StockPatenteResponse(BaseModel):
     sku: str
     lote: str
     cantidad: int
     fecha_vencimiento: date
-    
+
     class Config:
         from_attributes = True
-        orm_mode = True
 
-from typing import List, Dict, Any
-from pydantic import Field
+# ─── Caja ───────────────────────────────────────────────────
 
 class VentaCajaRequest(BaseModel):
     ean_producto: str
@@ -78,7 +82,7 @@ class VentaCajaResponse(BaseModel):
     cantidad_total_vendida: int
     satos_afectados: List[Dict[str, Any]]
 
-from typing import Literal
+# ─── Merma ──────────────────────────────────────────────────
 
 class MermaRequest(BaseModel):
     sato_id: uuid.UUID
@@ -90,6 +94,8 @@ class MermaResponse(BaseModel):
     mensaje: str
     sato_id: uuid.UUID
     cantidad_registrada: int
+
+# ─── Auditoría ──────────────────────────────────────────────
 
 class AuditoriaConteoRequest(BaseModel):
     ean_producto: str
@@ -103,4 +109,3 @@ class AuditoriaConteoResponse(BaseModel):
     cantidad_anterior: int
     cantidad_nueva: int
     diferencia: int
-

@@ -56,7 +56,6 @@ def venta_caja(request: VentaCajaRequest, db: Session = Depends(get_db)):
 
         # 4. Validar si alcanzó el stock en vitrina
         if cantidad_restante > 0:
-            db.rollback()
             raise HTTPException(
                 status_code=400, 
                 detail=f"Quiebre de stock en vitrina. Faltan {cantidad_restante} unidades para completar la venta."
@@ -71,8 +70,6 @@ def venta_caja(request: VentaCajaRequest, db: Session = Depends(get_db)):
         )
 
     except HTTPException:
-        # Volver a lanzar la excepción HTTP de manera limpia, el rollback ya se hizo si correspondía,
-        # pero por seguridad lo hacemos si hubo algún otro error HTTP
         db.rollback()
         raise
     except Exception as e:

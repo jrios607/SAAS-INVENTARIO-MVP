@@ -5,7 +5,10 @@ from app.models import Sato, Catalogo_Producto, Log_Transaccional
 from app.schemas import PalletReceptionRequest, PalletReceptionResponse
 from app.core.utils import parse_gs1_128
 
-router = APIRouter(tags=["Bodega - Recepción"])
+router = APIRouter(
+    prefix="/bodega",
+    tags=["Bodega - Recepción"]
+)
 
 @router.post("/recepcion/pallet", response_model=PalletReceptionResponse, status_code=201)
 def recepcionar_pallet(payload: PalletReceptionRequest, db: Session = Depends(get_db)):
