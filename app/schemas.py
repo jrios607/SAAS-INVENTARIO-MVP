@@ -65,3 +65,42 @@ class StockPatenteResponse(BaseModel):
     class Config:
         from_attributes = True
         orm_mode = True
+
+from typing import List, Dict, Any
+from pydantic import Field
+
+class VentaCajaRequest(BaseModel):
+    ean_producto: str
+    cantidad_vendida: int = Field(..., gt=0)
+
+class VentaCajaResponse(BaseModel):
+    mensaje: str
+    cantidad_total_vendida: int
+    satos_afectados: List[Dict[str, Any]]
+
+from typing import Literal
+
+class MermaRequest(BaseModel):
+    sato_id: uuid.UUID
+    cantidad: int = Field(..., gt=0)
+    motivo: Literal["Vencimiento", "Dañado", "Robo", "Otro"]
+    comentarios: Optional[str] = None
+
+class MermaResponse(BaseModel):
+    mensaje: str
+    sato_id: uuid.UUID
+    cantidad_registrada: int
+
+class AuditoriaConteoRequest(BaseModel):
+    ean_producto: str
+    id_patente: str
+    lote_impreso: str
+    cantidad_fisica_real: int = Field(..., ge=0)
+
+class AuditoriaConteoResponse(BaseModel):
+    mensaje: str
+    sato_id: uuid.UUID
+    cantidad_anterior: int
+    cantidad_nueva: int
+    diferencia: int
+
