@@ -11,12 +11,18 @@ class Catalogo_Producto(Base):
     categoria = Column(String, nullable=True)
     tolerancia_vencimiento_dias = Column(Integer, default=0)
 
-class Planograma(Base):
-    __tablename__ = 'planograma'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    pasillo = Column(String, nullable=False)
-    gondola = Column(String, nullable=False)
-    nivel = Column(String, nullable=False)
+class Patente(Base):
+    __tablename__ = 'patente'
+    
+    id_patente = Column(String, primary_key=True, index=True) # Ej: "485" o "486"
+    area_pasillo = Column(String, nullable=False) # Ej: "AREA 20"
+    tipo_mueble = Column(String, nullable=False, default="Gondola") # Gondola, Vitrina Frío, etc.
+    # Coordenadas para el Gemelo Digital 2D
+    coordenada_x = Column(Integer, default=0)
+    coordenada_y = Column(Integer, default=0)
+    ancho = Column(Integer, default=1)
+    largo = Column(Integer, default=1)
+    url_imagen_planograma = Column(String, nullable=True) 
 
 class Usuario(Base):
     __tablename__ = 'usuario'
@@ -29,7 +35,10 @@ class Sato(Base):
     sato_id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     padre_id = Column(Uuid(as_uuid=True), ForeignKey('satos.sato_id'), nullable=True) 
     sku = Column(String, ForeignKey('catalogo_producto.sku'), nullable=False, index=True)
-    ubicacion_id = Column(Integer, ForeignKey('planograma.id'), nullable=True)
+    
+    # Llave foránea apuntando a la nueva tabla patente
+    ubicacion_id = Column(String, ForeignKey('patente.id_patente'), nullable=True)
+    
     lote = Column(String, nullable=False)
     fecha_vencimiento = Column(Date, nullable=False)
     cantidad = Column(Integer, nullable=False)
