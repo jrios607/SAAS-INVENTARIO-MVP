@@ -2,13 +2,26 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy import Column, String, Integer, Date, DateTime, ForeignKey, Uuid
 from app.database import Base
+from sqlalchemy import Column, String, Float, JSON
+from sqlalchemy.orm import relationship
+
+
+
+class Categoria(Base):
+    __tablename__ = 'categoria'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    nombre = Column(String, unique=True, nullable=False, index=True) # Ej: "Abarrotes", "Lácteos"
+    color_hex = Column(String, nullable=False, default="#94a3b8") # Para pintar el plano 2D y Dashboards
 
 class Catalogo_Producto(Base):
     __tablename__ = 'catalogo_producto'
     sku = Column(String, primary_key=True, index=True)
     nombre = Column(String, nullable=False)
     ean = Column(String, nullable=False, unique=True, index=True)
-    categoria = Column(String, nullable=True)
+    
+    # Ahora la categoría no es un texto libre, es una llave foránea
+    categoria_id = Column(Integer, ForeignKey('categoria.id'), nullable=True)
+    
     tolerancia_vencimiento_dias = Column(Integer, default=0)
 
 class Patente(Base):
@@ -23,6 +36,8 @@ class Patente(Base):
     ancho = Column(Integer, default=1)
     largo = Column(Integer, default=1)
     url_imagen_planograma = Column(String, nullable=True) 
+    productos_asignados = Column(JSON, default=list)
+    submapeo_grid = Column(JSON, nullable=True)
 
 class Usuario(Base):
     __tablename__ = 'usuario'

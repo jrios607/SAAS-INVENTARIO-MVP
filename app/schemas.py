@@ -5,12 +5,19 @@ from pydantic import BaseModel, Field
 
 # ─── Catálogo ───────────────────────────────────────────────
 
-class ProductoCreate(BaseModel):
+class ProductoBase(BaseModel):
     sku: str
     nombre: str
     ean: str
     categoria: Optional[str] = None
     tolerancia_vencimiento_dias: int = 0
+
+class ProductoCreate(ProductoBase):
+    pass
+
+class ProductoModel(ProductoBase):
+    class Config:
+        from_attributes = True
 
 class ProductoResponse(BaseModel):
     mensaje: str
@@ -48,6 +55,8 @@ class PatenteCreate(BaseModel):
     ancho: int
     largo: int
     url_imagen_planograma: Optional[str] = None
+    productos_asignados: Optional[List[str]] = []
+    submapeo_grid: Optional[Dict[str, Any]] = None
 
 class PatenteResponse(BaseModel):
     id_patente: str
@@ -58,9 +67,23 @@ class PatenteResponse(BaseModel):
     ancho: int
     largo: int
     url_imagen_planograma: Optional[str] = None
+    productos_asignados: Optional[List[str]] = []
+    submapeo_grid: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True
+
+class PatenteUpdate(BaseModel):
+    """Schema para actualización parcial de coordenadas desde el mapa 2D."""
+    area_pasillo: Optional[str] = None
+    tipo_mueble: Optional[str] = None
+    coordenada_x: Optional[int] = None
+    coordenada_y: Optional[int] = None
+    ancho: Optional[int] = None
+    largo: Optional[int] = None
+    url_imagen_planograma: Optional[str] = None
+    productos_asignados: Optional[List[str]] = None
+    submapeo_grid: Optional[Dict[str, Any]] = None
 
 class StockPatenteResponse(BaseModel):
     sku: str
