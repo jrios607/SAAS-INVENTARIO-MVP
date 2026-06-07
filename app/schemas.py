@@ -3,6 +3,12 @@ from datetime import date
 from typing import Optional, List, Dict, Any, Literal
 from pydantic import BaseModel, Field
 
+
+class PalletReceptionRequest(BaseModel):
+    ean: str
+    lote: str
+    fecha_vencimiento: date
+    peso_kg: float
 # ─── Catálogo ───────────────────────────────────────────────
 
 class ProductoBase(BaseModel):

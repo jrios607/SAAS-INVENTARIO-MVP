@@ -21,6 +21,11 @@ class Catalogo_Producto(Base):
     
     # Ahora la categoría no es un texto libre, es una llave foránea
     categoria_id = Column(Integer, ForeignKey('categoria.id'), nullable=True)
+    categoria_rel = relationship('Categoria')
+    
+    @property
+    def categoria(self):
+        return self.categoria_rel.nombre if self.categoria_rel else None
     
     tolerancia_vencimiento_dias = Column(Integer, default=0)
 
