@@ -1,8 +1,11 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { Package, ScanBarcode, ArrowRight, CheckCircle2, RotateCcw } from "lucide-react";
+import dynamic from "next/dynamic";
+import { Package, ScanBarcode, ArrowRight, CheckCircle2, RotateCcw, Camera, X } from "lucide-react";
 import { recepcionarPallet } from "@/services/api";
+
+const Scanner = dynamic(() => import("@yudiel/react-qr-scanner").then((mod) => mod.Scanner), { ssr: false });
 
 interface GS1Data {
   ean: string;
@@ -17,6 +20,7 @@ export default function RecepcionBodegaPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -164,10 +168,19 @@ export default function RecepcionBodegaPage() {
             value={scanInput}
             onChange={(e) => setScanInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="w-full max-w-lg h-14 px-6 text-lg border-2 border-slate-300 rounded-xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 outline-none transition-all text-center tracking-wider font-mono shadow-inner"
+            className="w-full max-w-lg h-14 px-6 text-lg border-2 border-slate-300 rounded-xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 outline-none transition-all text-center tracking-wider font-mono shadow-inner mb-6"
             placeholder="Ej: (01)12032532050005..."
             autoFocus
           />
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-slate-400 font-medium">o también puede</span>
+            <button
+              onClick={() => setIsCameraOpen(true)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-xl font-semibold transition-all shadow-sm"
+            >
+              <Camera size={18} /> Escanear con Cámara
+            </button>
+          </div>
         </div>
       ) : (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -248,6 +261,48 @@ export default function RecepcionBodegaPage() {
                 {isSubmitting ? "Procesando..." : "Confirmar Recepción"}
                 {!isSubmitting && <ArrowRight size={18} />}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isCameraOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl relative animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center p-4 border-b border-slate-100 bg-slate-50">
+              <h3 className="font-semibold text-lg text-slate-800 flex items-center gap-2">
+                <Camera size={20} className="text-indigo-600" />
+                Escanear Etiqueta
+              </h3>
+              <button 
+                onClick={() => setIsCameraOpen(false)} 
+                className="text-slate-400 hover:text-slate-600 transition-colors p-1 bg-white rounded-full hover:bg-slate-200"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="bg-slate-100 p-4">
+              <div className="rounded-xl overflow-hidden shadow-inner bg-black aspect-square flex items-center justify-center relative">
+                <Scanner 
+                  onScan={(result) => {
+                    if (Array.isArray(result) && result.length > 0) {
+                      const code = result[0].rawValue;
+                      setIsCameraOpen(false);
+                      parseGS1(code);
+                    } else if (typeof result === "string") {
+                      setIsCameraOpen(false);
+                      parseGS1(result);
+                    } else if (result && (result as any).rawValue) {
+                      setIsCameraOpen(false);
+                      parseGS1((result as any).rawValue);
+                    }
+                  }} 
+                  components={{ audio: false, finder: true }}
+                />
+              </div>
+              <p className="text-center text-sm font-medium text-slate-500 mt-4">
+                Enfoque el código de barras dentro del recuadro
+              </p>
             </div>
           </div>
         </div>
