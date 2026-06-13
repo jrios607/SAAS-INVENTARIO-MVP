@@ -1,9 +1,8 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Integer, Date, DateTime, ForeignKey, Uuid
-from app.database import Base
-from sqlalchemy import Column, String, Float, JSON
+from sqlalchemy import Column, String, Integer, Float, Date, DateTime, ForeignKey, Uuid, JSON
 from sqlalchemy.orm import relationship
+from app.database import Base
 
 
 
@@ -18,6 +17,11 @@ class Catalogo_Producto(Base):
     sku = Column(String, primary_key=True, index=True)
     nombre = Column(String, nullable=False)
     ean = Column(String, nullable=False, unique=True, index=True)
+    
+    # Agrupación Global
+    familia = Column(String, nullable=True) # Ej: Abarrotes, Frescos, Non-Food
+    sub_familia = Column(String, nullable=True) # Ej: Aceites, Bebidas, Limpieza
+    proveedor_marca = Column(String, nullable=True) # Ej: CCU, Unilever
     
     # Ahora la categoría no es un texto libre, es una llave foránea
     categoria_id = Column(Integer, ForeignKey('categoria.id'), nullable=True)
@@ -54,15 +58,33 @@ class Sato(Base):
     __tablename__ = 'satos'
     sato_id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     padre_id = Column(Uuid(as_uuid=True), ForeignKey('satos.sato_id'), nullable=True) 
-    sku = Column(String, ForeignKey('catalogo_producto.sku'), nullable=False, index=True)
     
-    # Llave foránea apuntando a la nueva tabla patente
+    # Discriminador formal: CONTENEDOR (pallet LPN) vs PRODUCTO (unidad con SKU)
+    tipo_sato = Column(String, nullable=False, default="PRODUCTO")
+    
+    # LPN (License Plate Number) para los pallets consolidados
+    lpn = Column(String, nullable=True, unique=True, index=True) 
+    
+    # Campos de producto (Opcionales para los contenedores)
+    sku = Column(String, ForeignKey('catalogo_producto.sku'), nullable=True, index=True)
     ubicacion_id = Column(String, ForeignKey('patente.id_patente'), nullable=True)
+    lote = Column(String, nullable=True)
+    fecha_vencimiento = Column(Date, nullable=True)
+    cantidad = Column(Integer, nullable=True, default=0)
     
-    lote = Column(String, nullable=False)
-    fecha_vencimiento = Column(Date, nullable=False)
-    cantidad = Column(Integer, nullable=False)
-    estado = Column(String, nullable=False, default="Bodega") 
+    # Coordenadas de Micro-Slotting (Planograma)
+    nivel_estante = Column(Integer, nullable=True)
+    frente_posicion = Column(Integer, nullable=True)
+    
+    # Campos de LPN (Persistidos, antes se perdían en el log)
+    destino = Column(String, nullable=True)
+    tipo_carga = Column(String, nullable=True)
+    barcode_original = Column(String, nullable=True)
+    
+    estado = Column(String, nullable=False, default="Bodega")
+    
+    # Relación ORM padre ↔ hijos
+    hijos = relationship("Sato", backref="padre", remote_side=[sato_id], lazy="select")
 
 class Log_Transaccional(Base):
     __tablename__ = 'log_transaccional'
@@ -72,3 +94,18 @@ class Log_Transaccional(Base):
     accion = Column(String, nullable=False)
     fecha_hora = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     detalles = Column(String, nullable=True)
+
+class ASN_Padre(Base):
+    __tablename__ = 'asn_padre'
+    lpn = Column(String, primary_key=True, index=True) # Ej: 8089962588
+    origen = Column(String, nullable=False) # Ej: "Secos Santiago Lo Aguirre"
+    estado = Column(String, default="EN_TRANSITO") # EN_TRANSITO, RECEPCIONADO
+
+class ASN_Detalle(Base):
+    __tablename__ = 'asn_detalle'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    lpn_padre = Column(String, ForeignKey('asn_padre.lpn'), nullable=False)
+    sku = Column(String, ForeignKey('catalogo_producto.sku'), nullable=False)
+    cantidad = Column(Integer, nullable=False)
+    lote = Column(String, nullable=True)
+    fecha_vencimiento = Column(Date, nullable=True)

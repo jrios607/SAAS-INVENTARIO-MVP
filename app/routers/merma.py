@@ -18,6 +18,9 @@ def declarar_merma(request: MermaRequest, db: Session = Depends(get_db)):
         
         if not sato:
             raise HTTPException(status_code=404, detail="SATO no encontrado")
+        
+        if sato.cantidad is None:
+            raise HTTPException(status_code=400, detail="Este SATO es un contenedor (LPN). No tiene cantidad para declarar merma.")
             
         # 2. Validar que la cantidad de merma no supere el stock actual
         if request.cantidad > sato.cantidad:

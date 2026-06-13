@@ -1,20 +1,17 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 from typing import Optional, List, Dict, Any, Literal
 from pydantic import BaseModel, Field
 
-
-class PalletReceptionRequest(BaseModel):
-    ean: str
-    lote: str
-    fecha_vencimiento: date
-    peso_kg: float
 # ─── Catálogo ───────────────────────────────────────────────
 
 class ProductoBase(BaseModel):
     sku: str
     nombre: str
     ean: str
+    familia: Optional[str] = None
+    sub_familia: Optional[str] = None
+    proveedor_marca: Optional[str] = None
     categoria: Optional[str] = None
     tolerancia_vencimiento_dias: int = 0
 
@@ -29,6 +26,23 @@ class ProductoResponse(BaseModel):
     mensaje: str
     sku: str
 
+class ProductoDetalleStock(BaseModel):
+    sku: str
+    nombre: str
+    ean: str
+    proveedor_marca: Optional[str] = None
+    stock_individual: int
+
+class StockAgrupadoSubFamilia(BaseModel):
+    nombre_sub_familia: str
+    stock_sub_familia: int
+    productos: List[ProductoDetalleStock]
+
+class StockAgrupadoFamilia(BaseModel):
+    familia: str
+    stock_global_familia: int
+    sub_familias: List[StockAgrupadoSubFamilia]
+
 # ─── Bodega ─────────────────────────────────────────────────
 
 class PalletReceptionRequest(BaseModel):
@@ -38,6 +52,12 @@ class PalletReceptionResponse(BaseModel):
     mensaje: str
     sato_id: uuid.UUID
     ean_leido: str
+
+class ComplianceResponse(BaseModel):
+    cumplimiento_porcentaje: float
+    discrepancias: List[str]
+
+# ─── Recepción (LPN) ────────────────────────────────────────────────
 
 # ─── Vitrina ────────────────────────────────────────────────
 
@@ -49,6 +69,16 @@ class SatoFraccionarRequest(BaseModel):
 class SatoFraccionarResponse(BaseModel):
     mensaje: str
     sato_hijo_id: uuid.UUID
+
+class SatoMoverVitrinaRequest(BaseModel):
+    id_patente: str
+    nivel_estante: int
+    frente_posicion: int
+
+class SatoMoverVitrinaResponse(BaseModel):
+    mensaje: str
+    sato_id: uuid.UUID
+    nueva_ubicacion: str
 
 # ─── Patentes ───────────────────────────────────────────────
 
@@ -92,10 +122,12 @@ class PatenteUpdate(BaseModel):
     submapeo_grid: Optional[Dict[str, Any]] = None
 
 class StockPatenteResponse(BaseModel):
-    sku: str
-    lote: str
-    cantidad: int
-    fecha_vencimiento: date
+    sku: Optional[str] = None
+    lote: Optional[str] = None
+    cantidad: Optional[int] = None
+    fecha_vencimiento: Optional[date] = None
+    nivel_estante: Optional[int] = None
+    frente_posicion: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -124,6 +156,23 @@ class MermaResponse(BaseModel):
     sato_id: uuid.UUID
     cantidad_registrada: int
 
+# ─── Ajustes de Inventario ──────────────────────────────────
+
+class AjusteInventarioRequest(BaseModel):
+    cantidad_a_restar: int = Field(..., gt=0)
+    motivo: Literal["Faltante de Origen", "Rotura", "Merma Operativa", "Otro"]
+
+class SatoRecepcionDetalle(BaseModel):
+    sato_id: uuid.UUID
+    sku: str
+    nombre_producto: str
+    lpn_padre: Optional[str] = None
+    cantidad_actual: int
+    estado: str
+
+    class Config:
+        from_attributes = True
+
 # ─── Auditoría ──────────────────────────────────────────────
 
 class AuditoriaConteoRequest(BaseModel):
@@ -138,3 +187,50 @@ class AuditoriaConteoResponse(BaseModel):
     cantidad_anterior: int
     cantidad_nueva: int
     diferencia: int
+
+# ─── LPN (Pallet Consolidado) ──────────────────────────────
+
+class LpnReceptionRequest(BaseModel):
+    lpn: str
+    destino: str
+    tipo_carga: str
+    original_barcode: Optional[str] = None
+
+class LpnReceptionResponse(BaseModel):
+    mensaje: str
+    sato_padre_id: uuid.UUID
+    lpn_registrado: str
+    bultos_creados: int = 0
+
+# ─── Inyección ASN (Integración) ────────────────────────────
+
+class AsnInyeccionDetalle(BaseModel):
+    sku: str
+    cantidad: int = Field(..., gt=0)
+    lote: Optional[str] = None
+    fecha_vencimiento: Optional[date] = None
+
+class AsnInyeccionRequest(BaseModel):
+    lpn: str
+    origen: str
+    detalles: List[AsnInyeccionDetalle]
+
+# ─── Trazabilidad (Logs) ────────────────────────────────────
+
+class LogTransaccionalItem(BaseModel):
+    id: int
+    fecha_hora: datetime
+    accion: str
+    detalles: Optional[str] = None
+    usuario: str
+    lpn_sku_afectado: Optional[str] = None
+    sato_id: uuid.UUID
+
+    class Config:
+        from_attributes = True
+
+class LogTransaccionalResponse(BaseModel):
+    items: List[LogTransaccionalItem]
+    total: int
+    limit: int
+    offset: int

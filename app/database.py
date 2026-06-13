@@ -11,8 +11,12 @@ SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 if not SQLALCHEMY_DATABASE_URL:
     raise RuntimeError("La variable de entorno DATABASE_URL no está configurada en el archivo .env")
 
-# Crear el motor de PostgreSQL (ya no se necesita check_same_thread por ser Postgres)
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+# Crear el motor de PostgreSQL (añadiendo pool_pre_ping para reconectar automáticamente si Neon DB cierra la conexión inactiva)
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    pool_pre_ping=True,
+    pool_recycle=300
+)
 
 # Configurar la fábrica de sesiones
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

@@ -13,7 +13,7 @@ const Scanner = dynamic(() => import("@yudiel/react-qr-scanner").then(mod => mod
 interface HybridInputProps {
   value: string;
   onChange: (value: string) => void;
-  onEnter?: (value: string) => void; // Evento disparado al presionar Enter (Pistola USB)
+  onEnter?: (value: string) => void;
   placeholder?: string;
   autoFocus?: boolean;
 }
@@ -35,43 +35,15 @@ export function HybridInput({
     }
   }, [autoFocus]);
 
-  const playSuccessBeep = () => {
-    try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const oscillator = audioCtx.createOscillator();
-      const gainNode = audioCtx.createGain();
-      oscillator.type = "sine";
-      oscillator.frequency.setValueAtTime(1200, audioCtx.currentTime); // 1200 Hz
-      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-      oscillator.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-      oscillator.start();
-      setTimeout(() => {
-        oscillator.stop();
-        audioCtx.close();
-      }, 100);
-    } catch (e) {
-      // Ignorar si el navegador bloquea el audio
-    }
-  };
-
   const handleScan = (detectedCodes: any[]) => {
     if (detectedCodes.length > 0) {
       const code = detectedCodes[0].rawValue;
-      playSuccessBeep();
       onChange(code);
       setIsCameraOpen(false);
-      
-      // Si la prop onEnter fue pasada, la disparamos simulando el flujo de la pistola
       if (onEnter) {
         onEnter(code);
       }
     }
-  };
-
-  const handleCameraError = (error: any) => {
-    console.error(error);
-    setCameraError("Requiere permisos de cámara y conexión segura HTTPS o Localhost.");
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -127,11 +99,7 @@ export function HybridInput({
               ) : (
                 <Scanner
                   onScan={handleScan}
-                  onError={handleCameraError}
-                  components={{
-                    finder: true,
-                  }}
-                  formats={["qr_code", "ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39"]}
+                  components={{ finder: true }}
                 />
               )}
             </div>

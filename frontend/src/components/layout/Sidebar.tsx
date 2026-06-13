@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Package, Grid3X3, Warehouse } from "lucide-react";
+import { LayoutDashboard, Package, Grid3X3, Warehouse, PackageMinus, ClipboardList } from "lucide-react";
 
 const navItems = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Catálogo", href: "/catalogo", icon: Package },
   { name: "Plano 2D (Patentes)", href: "/patentes", icon: Grid3X3 },
-  { name: "Recepción Bodega", href: "/bodega-test", icon: Warehouse },
+  { name: "Recepción Bodega", href: "/recepcion", icon: Warehouse },
+  { name: "Ajustes de Inventario", href: "/ajustes", icon: PackageMinus },
+  { name: "Trazabilidad", href: "/trazabilidad", icon: ClipboardList },
 ];
 
 export function Sidebar() {

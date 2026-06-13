@@ -13,8 +13,31 @@ export interface Producto {
   sku: string;
   nombre: string;
   ean: string;
-  categoria: string;
+  categoria?: string;
+  familia?: string;
+  sub_familia?: string;
+  proveedor_marca?: string;
   tolerancia_vencimiento_dias?: number;
+}
+
+export interface ProductoDetalleStock {
+  sku: string;
+  nombre: string;
+  ean: string;
+  proveedor_marca?: string;
+  stock_individual: number;
+}
+
+export interface StockAgrupadoSubFamilia {
+  nombre_sub_familia: string;
+  stock_sub_familia: number;
+  productos: ProductoDetalleStock[];
+}
+
+export interface StockAgrupadoFamilia {
+  familia: string;
+  stock_global_familia: number;
+  sub_familias: StockAgrupadoSubFamilia[];
 }
 
 export interface Patente {
@@ -35,6 +58,13 @@ export interface StockItem {
   lote: string;
   cantidad: number;
   fecha_vencimiento: string;
+  nivel_estante?: number;
+  frente_posicion?: number;
+}
+
+export interface ComplianceResponse {
+  cumplimiento_porcentaje: number;
+  discrepancias: string[];
 }
 
 export interface PalletReceptionResponse {
@@ -55,6 +85,20 @@ export async function getProductos(): Promise<Producto[]> {
     return await res.json();
   } catch (e) {
     console.error("getProductos:", e);
+    return [];
+  }
+}
+
+export async function getStockAgrupado(): Promise<StockAgrupadoFamilia[]> {
+  try {
+    const res = await fetch(`${API_URL}/catalogo/stock-agrupado`, {
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(res.statusText);
+    return await res.json();
+  } catch (e) {
+    console.error("getStockAgrupado:", e);
     return [];
   }
 }
@@ -133,6 +177,20 @@ export async function getStockPatente(id_patente: string): Promise<StockItem[]> 
   }
 }
 
+export async function getPatenteCompliance(id_patente: string): Promise<ComplianceResponse | null> {
+  try {
+    const res = await fetch(`${API_URL}/patentes/${encodeURIComponent(id_patente)}/compliance`, {
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(res.statusText);
+    return await res.json();
+  } catch (e) {
+    console.error("getPatenteCompliance:", e);
+    return null;
+  }
+}
+
 // ─── Bodega ───────────────────────────────────────────────────────────────────
 
 export async function recepcionarPallet(barcode_text: string): Promise<PalletReceptionResponse> {
@@ -144,6 +202,114 @@ export async function recepcionarPallet(barcode_text: string): Promise<PalletRec
   if (!res.ok) {
     const err = await res.json();
     throw new Error(err.detail || res.statusText);
+  }
+  return await res.json();
+}
+
+export interface LpnReceptionResponse {
+  mensaje: string;
+  lpn: string;
+}
+
+export async function recepcionarLpn(lpn_data: { destino: string, lpn: string, tipo_carga: string, original_barcode: string }): Promise<LpnReceptionResponse> {
+  const res = await fetch(`${API_URL}/bodega/recepcion/lpn`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(lpn_data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || res.statusText);
+  }
+  return await res.json();
+}
+
+export async function deletePatente(id_patente: string): Promise<void> {
+  const res = await fetch(`${API_URL}/patentes/${encodeURIComponent(id_patente)}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || res.statusText);
+  }
+}
+
+export interface SatoDisponible {
+  sato_id: string;
+  sku: string;
+  cantidad: number;
+  estado: string;
+  lote?: string;
+  fecha_vencimiento?: string;
+}
+
+export async function getSatosDisponibles(): Promise<SatoDisponible[]> {
+  try {
+    const res = await fetch(`${API_URL}/bodega/satos/disponibles`, {
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(res.statusText);
+    return await res.json();
+  } catch (e) {
+    console.error("getSatosDisponibles:", e);
+    return [];
+  }
+}
+
+export async function moverSatoAVitrina(sato_id: string, id_patente: string, nivel_estante: number, frente_posicion: number): Promise<{ mensaje: string; sato_id: string; nueva_ubicacion: string }> {
+  const res = await fetch(`${API_URL}/vitrina/${encodeURIComponent(sato_id)}/mover_a_vitrina`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id_patente, nivel_estante, frente_posicion }),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => null);
+    throw new Error(errorData?.detail || res.statusText);
+  }
+  return await res.json();
+}
+
+// ─── Ajustes de Inventario ──────────────────────────────────
+
+export interface SatoRecepcionDetalle {
+  sato_id: string;
+  sku: string;
+  nombre_producto: string;
+  lpn_padre?: string;
+  cantidad_actual: number;
+  estado: string;
+}
+
+export interface AjusteInventarioRequest {
+  cantidad_a_restar: number;
+  motivo: "Faltante de Origen" | "Rotura" | "Merma Operativa" | "Otro";
+}
+
+export async function getSatosRecepcion(): Promise<SatoRecepcionDetalle[]> {
+  try {
+    const res = await fetch(`${API_URL}/bodega/recepcion/satos`, {
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(res.statusText);
+    return await res.json();
+  } catch (e) {
+    console.error("getSatosRecepcion:", e);
+    return [];
+  }
+}
+
+export async function ajustarInventario(sato_id: string, request: AjusteInventarioRequest): Promise<{ mensaje: string }> {
+  const res = await fetch(`${API_URL}/bodega/satos/${encodeURIComponent(sato_id)}/ajuste`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => null);
+    throw new Error(errorData?.detail || res.statusText);
   }
   return await res.json();
 }
