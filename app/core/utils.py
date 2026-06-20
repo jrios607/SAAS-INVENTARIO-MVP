@@ -4,8 +4,8 @@ from datetime import datetime
 def parse_gs1_128(barcode: str) -> dict:
     parsed_data = {}
     try:
-        # (01) GTIN / EAN — 14 dígitos
-        match_01 = re.search(r'\(?01\)?(\d{14})', barcode)
+        # (01) GTIN / EAN — 13 o 14 dígitos
+        match_01 = re.search(r'\(?01\)?(\d{13,14})', barcode)
         if match_01:
             parsed_data['ean'] = match_01.group(1)
             
@@ -33,11 +33,10 @@ def parse_gs1_128(barcode: str) -> dict:
         else:
             parsed_data['cantidad'] = 1  # Default: 1 unidad si no hay AI(37)
             
-        # Validación: solo ean, lote y vencimiento son obligatorios
-        required_keys = {'ean', 'lote', 'vencimiento'}
+        # Validación: EAN es siempre obligatorio. Lote y Vencimiento dependerán del producto en los servicios.
+        required_keys = {'ean'}
         if not required_keys.issubset(parsed_data.keys()):
-            missing = required_keys - set(parsed_data.keys())
-            raise ValueError(f"Faltan identificadores: {missing}")
+            raise ValueError(f"Falta identificador EAN en el código GS1-128")
             
         return parsed_data
         

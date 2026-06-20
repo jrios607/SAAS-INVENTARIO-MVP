@@ -1,8 +1,18 @@
+"use client";
+
 import { ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 
 export function PageLayout({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+
+  // Aislamiento completo de la ruta /pos para la Caja SaaS
+  if (pathname.startsWith("/pos")) {
+    return <>{children}</>;
+  }
+
   return (
     <div className="flex min-h-screen bg-slate-50">
       <Sidebar />

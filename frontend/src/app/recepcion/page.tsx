@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { Package, ScanBarcode, ArrowRight, CheckCircle2, Camera, X, Box, AlertCircle } from "lucide-react";
-import { recepcionarPallet, recepcionarLpn } from "@/services/api";
+import { recepcionarPallet, recepcionarLpn, getPatentesBodega, BodegaPatente } from "@/services/api";
 
 const Scanner = dynamic(() => import("@yudiel/react-qr-scanner").then((mod) => mod.Scanner), { ssr: false });
 
@@ -12,12 +12,14 @@ interface GS1Data {
   peso: string;
   vencimiento: string;
   lote: string;
+  ubicacion_id: string;
 }
 
 interface LPNData {
   destino: string;
   lpn: string;
   tipo_carga: string;
+  ubicacion_id: string;
 }
 
 type ParsedData = 
@@ -31,8 +33,13 @@ export default function RecepcionBodegaPage() {
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [zonasBodega, setZonasBodega] = useState<BodegaPatente[]>([]);
   
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    getPatentesBodega().then(setZonasBodega).catch(console.error);
+  }, []);
 
   useEffect(() => {
     if (!parsedResult && inputRef.current && !isCameraOpen) {
@@ -60,18 +67,18 @@ export default function RecepcionBodegaPage() {
       const tipo_carga = tipoCargaMatch ? tipoCargaMatch[1].toUpperCase() : "";
 
       if (lpn) {
-        setParsedResult({ type: "LPN", data: { destino, lpn, tipo_carga }, original: barcode });
+        setParsedResult({ type: "LPN", data: { destino, lpn, tipo_carga, ubicacion_id: "" }, original: barcode });
         return;
       }
     }
 
     // Caso B: Lectura de LPN Directo (Si la cámara leyó el código de arriba por accidente)
-    // Si son solo números y tiene entre 8 y 12 caracteres (Ej: 8089962588)
-    if (/^\d{8,12}$/.test(barcode)) {
+    // Si son solo números y tiene entre 6 y 25 caracteres (Ej: 8089962588 o 210259241103989791)
+    if (/^\d{6,25}$/.test(barcode)) {
       setParsedResult({ 
         type: "LPN", 
         // Asignamos strings vacíos para forzar al operador a seleccionarlos en el UI
-        data: { destino: "", lpn: barcode, tipo_carga: "" }, 
+        data: { destino: "", lpn: barcode, tipo_carga: "", ubicacion_id: "" }, 
         original: barcode 
       });
       return;
@@ -82,33 +89,53 @@ export default function RecepcionBodegaPage() {
     let peso = "";
     let vencimiento = "";
     let lote = "";
+    let tempBarcode = barcode;
 
-    const eanMatch = barcode.match(/\(?01\)?(\d{14})/);
-    if (eanMatch) {
-      ean = eanMatch[1];
+    // Hacemos el regex flexible para capturar el GTIN aunque empiece cortado si la pistola falló,
+    // o simplemente requerimos el 01.
+    const eanMatch = tempBarcode.match(/(?:^|[^0-9])?\(?01\)?(\d{14})/);
+    if (eanMatch || tempBarcode.length > 30) {
+      if (eanMatch) {
+        ean = eanMatch[1];
+        tempBarcode = tempBarcode.replace(/(?:^|[^0-9])?\(?01\)?\d{14}/, ' ');
+      } else {
+        // Fallback: Si el scanner cortó el '01' inicial pero el string es re largo
+        const fallbackEanMatch = tempBarcode.match(/^(\d{10,14})/);
+        if (fallbackEanMatch) {
+          ean = fallbackEanMatch[1].padStart(14, '0');
+          tempBarcode = tempBarcode.replace(/^(\d{10,14})/, ' ');
+        }
+      }
       
-      const pesoMatch = barcode.match(/\(?3102\)?(\d{6})/);
+      const pesoMatch = tempBarcode.match(/\(?310[0-5]\)?(\d{6})/);
       if (pesoMatch) {
         const rawPeso = pesoMatch[1];
         const intPart = parseInt(rawPeso.substring(0, 4), 10);
         const decPart = rawPeso.substring(4, 6);
         peso = `${intPart}.${decPart}`;
+        tempBarcode = tempBarcode.replace(/\(?310[0-5]\)?\d{6}/, ' ');
       }
 
-      const vencMatch = barcode.match(/\(?15\)?(\d{6})/);
+      const vencMatch = tempBarcode.match(/\(?15\)?(\d{6})/);
       if (vencMatch) {
         const rawVenc = vencMatch[1];
         const yy = rawVenc.substring(0, 2);
         const mm = rawVenc.substring(2, 4);
         const dd = rawVenc.substring(4, 6);
         vencimiento = `20${yy}-${mm}-${dd}`;
+        tempBarcode = tempBarcode.replace(/\(?15\)?\d{6}/, ' ');
       }
 
-      const loteMatch = barcode.match(/\(?10\)?([^()]+)/);
+      // Lote: Ahora que limpiamos EAN, Peso y Vencimiento del tempBarcode, no hay riesgo de 
+      // colisionar con un '10' que estuviese dentro del peso (ej: 001051)
+      const loteMatch = tempBarcode.match(/\(?10\)?([A-Za-z0-9]{1,20}?)(?:\(?21\)?|\(?30\)?|$)/);
       if (loteMatch) lote = loteMatch[1];
 
-      setParsedResult({ type: "GS1", data: { ean, peso, vencimiento, lote }, original: barcode });
-      return;
+      // Si por lo menos sacamos Vencimiento y Peso, lo consideramos GS1 válido para editar
+      if (vencimiento && ean) {
+        setParsedResult({ type: "GS1", data: { ean, peso, vencimiento, lote, ubicacion_id: "" }, original: barcode });
+        return;
+      }
     }
 
     // Si no cayó en ningún caso válido:
@@ -117,16 +144,38 @@ export default function RecepcionBodegaPage() {
   };
 
   const [cameraFeedback, setCameraFeedback] = useState("");
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
+
+  // Obtener la lista de cámaras al abrir
+  useEffect(() => {
+    if (isCameraOpen && navigator?.mediaDevices?.enumerateDevices) {
+      navigator.mediaDevices.enumerateDevices().then((devices) => {
+        const cameras = devices.filter((device) => device.kind === "videoinput");
+        setVideoDevices(cameras);
+        if (cameras.length > 0 && !selectedDeviceId) {
+          // Por defecto intentar seleccionar la trasera si es posible, sino la primera
+          const backCamera = cameras.find(c => c.label.toLowerCase().includes('back') || c.label.toLowerCase().includes('trasera'));
+          setSelectedDeviceId(backCamera ? backCamera.deviceId : cameras[0].deviceId);
+        }
+      }).catch(err => console.error("Error enumerating devices", err));
+    }
+  }, [isCameraOpen, selectedDeviceId]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
+    // Si la pistola manda Enter o manda "}" (muy común por layouts de teclado/scanners desconfigurados)
+    if (e.key === "Enter" || e.key === "}") {
       e.preventDefault();
-      const data = scanInput.trim();
       
-      // Filtro de Exclusión Activa para códigos "basura" o LPN cortos accidentales
-      if (/^[0-9]{8,14}$/.test(data)) {
-        setScanInput(""); // Limpiar el input para volver a leer
-        return; // Ignorar silenciosamente
+      let data = "";
+      if (inputRef.current) {
+        data = inputRef.current.value.trim();
+      } else {
+        data = scanInput.trim();
+      }
+      
+      if (data.endsWith("}")) {
+        data = data.slice(0, -1);
       }
       
       procesarCodigo(data);
@@ -165,14 +214,15 @@ export default function RecepcionBodegaPage() {
     try {
       if (parsedResult.type === "GS1") {
         const finalBarcode = rebuildBarcode(parsedResult.data);
-        await recepcionarPallet(finalBarcode);
+        await recepcionarPallet(finalBarcode, parsedResult.data.ubicacion_id || undefined);
         setSuccessMsg(`Recepción exitosa de producto. EAN: ${parsedResult.data.ean}`);
       } else if (parsedResult.type === "LPN") {
         await recepcionarLpn({
           destino: parsedResult.data.destino,
           lpn: parsedResult.data.lpn,
           tipo_carga: parsedResult.data.tipo_carga,
-          original_barcode: parsedResult.original
+          original_barcode: parsedResult.original,
+          ubicacion_id: parsedResult.data.ubicacion_id || undefined
         });
         setSuccessMsg(`Recepción exitosa de consolidado. LPN: ${parsedResult.data.lpn}`);
       }
@@ -230,8 +280,33 @@ export default function RecepcionBodegaPage() {
                     <X size={20} />
                  </button>
               </div>
+
+              {/* Selector de Cámara */}
+              {videoDevices.length > 1 && (
+                <div className="mb-4">
+                  <select 
+                    value={selectedDeviceId}
+                    onChange={(e) => setSelectedDeviceId(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 text-slate-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2.5"
+                  >
+                    {videoDevices.map((device, idx) => (
+                      <option key={device.deviceId} value={device.deviceId}>
+                        {device.label || `Cámara ${idx + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="rounded-xl overflow-hidden shadow-inner bg-black aspect-[4/3] flex items-center justify-center relative">
                 <Scanner 
+                  key={selectedDeviceId || "default-scanner"}
+                  constraints={
+                    selectedDeviceId 
+                      ? { deviceId: selectedDeviceId, width: { ideal: 1920 }, height: { ideal: 1080 } } 
+                      : { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } }
+                  }
+                  formats={['code_128', 'code_39', 'itf', 'ean_13']}
                   onScan={(result) => {
                     let code = "";
                     if (Array.isArray(result) && result.length > 0) {
@@ -245,19 +320,23 @@ export default function RecepcionBodegaPage() {
                     if (code) {
                       const data = code.trim();
                       
-                      // Filtro de Exclusión Activa (Ignorar códigos cortos de 8 a 14 números)
-                      if (/^[0-9]{8,14}$/.test(data)) {
-                        setCameraFeedback("Buscando código principal...");
+                      const isGS1 = /(?:^|[^0-9])?\(?01\)?\d{14}/.test(data) || data.length > 25;
+                      const isPallet = data.includes("=");
+                      
+                      // Filtro de Exclusión Activa para la cámara:
+                      // Ignoramos lecturas basura o códigos cortos accidentales, y mantenemos la cámara abierta.
+                      if (!isGS1 && !isPallet) {
+                        setCameraFeedback(`Ignorado: ${data.substring(0, 15)}...`);
                         setTimeout(() => setCameraFeedback(""), 1500);
                         return; // Retorno silencioso, no apaga la cámara
                       }
 
-                      // Solo si pasa el filtro (es decir, tiene "=" o "(01)" o es más largo/complejo)
+                      // Solo si detectamos un GS1 o Pallet válido procesamos y apagamos la cámara
                       setIsCameraOpen(false);
                       procesarCodigo(data);
                     }
                   }} 
-                  components={{ finder: true }}
+                  components={{ finder: false }}
                 />
               </div>
               <p className="text-sm text-slate-500 mt-4 animate-pulse font-medium">
@@ -355,6 +434,24 @@ export default function RecepcionBodegaPage() {
                   className="w-full h-11 px-3 border border-slate-300 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-mono text-sm bg-slate-50"
                 />
               </div>
+
+              <div className="space-y-1.5 md:col-span-2">
+                <label className="text-sm font-bold text-slate-700 flex items-center gap-1">
+                  Zona de Bodega Destino (Opcional)
+                </label>
+                <select
+                  value={parsedResult.data.ubicacion_id}
+                  onChange={(e) => setParsedResult({ ...parsedResult, data: { ...parsedResult.data, ubicacion_id: e.target.value } })}
+                  className="w-full h-11 px-4 border border-slate-300 bg-slate-50 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-mono text-sm cursor-pointer"
+                >
+                  <option value="">-- Dejar en "Bodega Recepción" --</option>
+                  {zonasBodega.map(z => (
+                    <option key={z.id_patente} value={z.id_patente}>
+                      {z.area_pasillo} ({z.tipo_ubicacion.replace("_", " ")})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col-reverse sm:flex-row justify-end gap-3">
@@ -439,6 +536,24 @@ export default function RecepcionBodegaPage() {
                   {parsedResult.data.tipo_carga && !["SECO", "FRIO", "CONGELADO"].includes(parsedResult.data.tipo_carga) && (
                     <option value={parsedResult.data.tipo_carga}>{parsedResult.data.tipo_carga}</option>
                   )}
+                </select>
+              </div>
+
+              <div className="space-y-1.5 md:col-span-3">
+                <label className="text-sm font-bold text-slate-700 flex items-center gap-1">
+                  Zona de Bodega Destino (Opcional)
+                </label>
+                <select
+                  value={parsedResult.data.ubicacion_id}
+                  onChange={(e) => setParsedResult({ ...parsedResult, data: { ...parsedResult.data, ubicacion_id: e.target.value } })}
+                  className="w-full h-11 px-4 border border-slate-300 bg-slate-50 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-mono text-sm cursor-pointer"
+                >
+                  <option value="">-- Dejar en "Bodega Recepción" --</option>
+                  {zonasBodega.map(z => (
+                    <option key={z.id_patente} value={z.id_patente}>
+                      {z.area_pasillo} ({z.tipo_ubicacion.replace("_", " ")})
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>

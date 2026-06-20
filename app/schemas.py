@@ -14,6 +14,9 @@ class ProductoBase(BaseModel):
     proveedor_marca: Optional[str] = None
     categoria: Optional[str] = None
     tolerancia_vencimiento_dias: int = 0
+    controla_vencimiento: bool = False
+    dias_vida_util: Optional[int] = None
+    precio: int = 0
 
 class ProductoCreate(ProductoBase):
     pass
@@ -47,6 +50,7 @@ class StockAgrupadoFamilia(BaseModel):
 
 class PalletReceptionRequest(BaseModel):
     barcode_text: str
+    ubicacion_id: Optional[str] = None
 
 class PalletReceptionResponse(BaseModel):
     mensaje: str
@@ -54,10 +58,86 @@ class PalletReceptionResponse(BaseModel):
     ean_leido: str
 
 class ComplianceResponse(BaseModel):
-    cumplimiento_porcentaje: float
+    cumplimiento_porcentaje: Optional[float] = None
     discrepancias: List[str]
 
+class SatoModel(BaseModel):
+    sato_id: uuid.UUID
+    padre_id: Optional[uuid.UUID] = None
+    tipo_sato: str
+    lpn: Optional[str] = None
+    sku: Optional[str] = None
+    cantidad: Optional[int] = None
+    estado: str
+    fecha_elaboracion: Optional[date] = None
+    fecha_vencimiento: Optional[date] = None
+
+    class Config:
+        from_attributes = True
+
 # ─── Recepción (LPN) ────────────────────────────────────────────────
+
+class LpnReceptionRequest(BaseModel):
+    lpn: str
+    destino: str
+    tipo_carga: str
+    original_barcode: str
+    ubicacion_id: Optional[str] = None
+
+class LpnReceptionResponse(BaseModel):
+    mensaje: str
+    sato_padre_id: uuid.UUID
+    lpn_registrado: str
+    bultos_creados: int
+
+class AjusteInventarioRequest(BaseModel):
+    cantidad_a_restar: int
+    motivo: str
+    url_foto: Optional[str] = None
+
+class SatoRecepcionDetalle(BaseModel):
+    sato_id: uuid.UUID
+    sku: Optional[str] = None
+    nombre_producto: Optional[str] = None
+    lpn_padre: Optional[str] = None
+    cantidad_actual: Optional[int] = None
+    estado: str
+
+    class Config:
+        from_attributes = True
+
+
+# ─── Merma ─────────────────────────────────────────────────
+
+class MermaRequest(BaseModel):
+    sato_id: uuid.UUID
+    cantidad: int
+    motivo: str
+    comentarios: Optional[str] = None
+
+class MermaResponse(BaseModel):
+    mensaje: str
+    sato_id: uuid.UUID
+    cantidad_registrada: int
+
+# ─── Inventario / Alertas ───────────────────────────────────
+
+class AlertaVencimientoItem(BaseModel):
+    sato_id: uuid.UUID
+    sku: str
+    nombre_producto: str
+    lote: Optional[str] = None
+    fecha_vencimiento: Optional[date] = None
+    dias_restantes: int
+    estado: str
+    ubicacion_id: Optional[str] = None
+    cantidad: int
+
+    class Config:
+        from_attributes = True
+
+class AlertaVencimientoResponse(BaseModel):
+    alertas: List[AlertaVencimientoItem]
 
 # ─── Vitrina ────────────────────────────────────────────────
 
@@ -90,6 +170,7 @@ class PatenteCreate(BaseModel):
     coordenada_y: int
     ancho: int
     largo: int
+    rotacion: Optional[float] = 0.0
     url_imagen_planograma: Optional[str] = None
     productos_asignados: Optional[List[str]] = []
     submapeo_grid: Optional[Dict[str, Any]] = None
@@ -102,6 +183,7 @@ class PatenteResponse(BaseModel):
     coordenada_y: int
     ancho: int
     largo: int
+    rotacion: Optional[float] = 0.0
     url_imagen_planograma: Optional[str] = None
     productos_asignados: Optional[List[str]] = []
     submapeo_grid: Optional[Dict[str, Any]] = None
@@ -117,9 +199,32 @@ class PatenteUpdate(BaseModel):
     coordenada_y: Optional[int] = None
     ancho: Optional[int] = None
     largo: Optional[int] = None
+    rotacion: Optional[float] = None
     url_imagen_planograma: Optional[str] = None
     productos_asignados: Optional[List[str]] = None
     submapeo_grid: Optional[Dict[str, Any]] = None
+
+class DecoracionPlanoCreate(BaseModel):
+    id: str
+    tipo: str
+    x: float = 0.0
+    y: float = 0.0
+    w: float = 100.0
+    h: float = 50.0
+    rotacion: float = 0.0
+    config: Optional[Dict[str, Any]] = {}
+
+class DecoracionPlanoUpdate(BaseModel):
+    x: Optional[float] = None
+    y: Optional[float] = None
+    w: Optional[float] = None
+    h: Optional[float] = None
+    rotacion: Optional[float] = None
+    config: Optional[Dict[str, Any]] = None
+
+class DecoracionPlanoResponse(DecoracionPlanoCreate):
+    class Config:
+        from_attributes = True
 
 class StockPatenteResponse(BaseModel):
     sku: Optional[str] = None
@@ -132,105 +237,64 @@ class StockPatenteResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# ─── Caja ───────────────────────────────────────────────────
+# ─── ASN (Inbound) ──────────────────────────────────────────
 
-class VentaCajaRequest(BaseModel):
-    ean_producto: str
-    cantidad_vendida: int = Field(..., gt=0)
-
-class VentaCajaResponse(BaseModel):
-    mensaje: str
-    cantidad_total_vendida: int
-    satos_afectados: List[Dict[str, Any]]
-
-# ─── Merma ──────────────────────────────────────────────────
-
-class MermaRequest(BaseModel):
-    sato_id: uuid.UUID
-    cantidad: int = Field(..., gt=0)
-    motivo: Literal["Vencimiento", "Dañado", "Robo", "Otro"]
-    comentarios: Optional[str] = None
-
-class MermaResponse(BaseModel):
-    mensaje: str
-    sato_id: uuid.UUID
-    cantidad_registrada: int
-
-# ─── Ajustes de Inventario ──────────────────────────────────
-
-class AjusteInventarioRequest(BaseModel):
-    cantidad_a_restar: int = Field(..., gt=0)
-    motivo: Literal["Faltante de Origen", "Rotura", "Merma Operativa", "Otro"]
-
-class SatoRecepcionDetalle(BaseModel):
-    sato_id: uuid.UUID
+class AsnDetalleItem(BaseModel):
     sku: str
-    nombre_producto: str
-    lpn_padre: Optional[str] = None
-    cantidad_actual: int
-    estado: str
-
-    class Config:
-        from_attributes = True
-
-# ─── Auditoría ──────────────────────────────────────────────
-
-class AuditoriaConteoRequest(BaseModel):
-    ean_producto: str
-    id_patente: str
-    lote_impreso: str
-    cantidad_fisica_real: int = Field(..., ge=0)
-
-class AuditoriaConteoResponse(BaseModel):
-    mensaje: str
-    sato_id: uuid.UUID
-    cantidad_anterior: int
-    cantidad_nueva: int
-    diferencia: int
-
-# ─── LPN (Pallet Consolidado) ──────────────────────────────
-
-class LpnReceptionRequest(BaseModel):
-    lpn: str
-    destino: str
-    tipo_carga: str
-    original_barcode: Optional[str] = None
-
-class LpnReceptionResponse(BaseModel):
-    mensaje: str
-    sato_padre_id: uuid.UUID
-    lpn_registrado: str
-    bultos_creados: int = 0
-
-# ─── Inyección ASN (Integración) ────────────────────────────
-
-class AsnInyeccionDetalle(BaseModel):
-    sku: str
-    cantidad: int = Field(..., gt=0)
+    cantidad: int
     lote: Optional[str] = None
     fecha_vencimiento: Optional[date] = None
 
 class AsnInyeccionRequest(BaseModel):
     lpn: str
     origen: str
-    detalles: List[AsnInyeccionDetalle]
+    detalles: List[AsnDetalleItem]
 
-# ─── Trazabilidad (Logs) ────────────────────────────────────
+# ─── Outbound / Picking ─────────────────────────────────────
 
-class LogTransaccionalItem(BaseModel):
-    id: int
-    fecha_hora: datetime
-    accion: str
-    detalles: Optional[str] = None
-    usuario: str
-    lpn_sku_afectado: Optional[str] = None
+class GenerarOlaRequest(BaseModel):
+    pedido_ids: List[int]
+
+class TareaPickingItem(BaseModel):
+    tarea_id: int
+    pedido_id: int
+    sku: str
+    nombre_producto: str
     sato_id: uuid.UUID
+    cantidad_a_extraer: int
+    estado: str
+    id_patente: str
+    area_pasillo: str
+    nivel_estante: Optional[int] = None
+    frente_posicion: Optional[int] = None
 
     class Config:
         from_attributes = True
 
-class LogTransaccionalResponse(BaseModel):
-    items: List[LogTransaccionalItem]
-    total: int
-    limit: int
-    offset: int
+class OlaPickingResponse(BaseModel):
+    ola_id: int
+    estado: str
+    total_tareas: int
+    tareas: List[TareaPickingItem]
+
+class CompletarTareaRequest(BaseModel):
+    ean_escaneado: str
+
+# ─── Trazabilidad ───────────────────────────────────────────
+
+class TrazabilidadSatoItem(BaseModel):
+    sato_id: uuid.UUID
+    estado: str
+    cantidad: int
+    ubicacion_id: Optional[str] = None
+    fecha_vencimiento: Optional[date] = None
+
+    class Config:
+        from_attributes = True
+
+class TrazabilidadLoteResponse(BaseModel):
+    lote: str
+    sku: str
+    nombre_producto: str
+    cantidad_total: int
+    satos: List[TrazabilidadSatoItem]

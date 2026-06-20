@@ -1,3 +1,25 @@
+# Environment variables
+.env
+.env.*
+.env.local
+.env.production
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# SQLite (dev)
+*.db
+
+# Node
+node_modules/
+.next/
+
+# IDE
 target/
 .idea/
 *.iml
@@ -5,3 +27,4 @@ target/
 .project
 .settings/
 .DS_Store
+.vscode/

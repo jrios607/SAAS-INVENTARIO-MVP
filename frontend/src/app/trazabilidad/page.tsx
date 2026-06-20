@@ -42,6 +42,7 @@ const ACTION_COLORS: Record<string, string> = {
   VENTA_CAJA: "bg-purple-100 text-purple-800 border-purple-200",
   FRACCIONAMIENTO: "bg-blue-100 text-blue-800 border-blue-200",
   CONTEO_AUDITORIA: "bg-amber-100 text-amber-800 border-amber-200",
+  PICKING_OUTBOUND: "bg-indigo-100 text-indigo-800 border-indigo-200",
   DEFAULT: "bg-gray-100 text-gray-800 border-gray-200",
 };
 
@@ -72,12 +73,12 @@ export default function TrazabilidadPage() {
   if (fechaFin) params.append('fecha_fin', fechaFin);
 
   const { data, error, isLoading } = useSWR<LogResponse>(
-    `http://localhost:8000/trazabilidad/logs?${params.toString()}`,
+    `http://localhost:8000/logs?${params.toString()}`,
     fetcher
   );
 
   const { data: treeData, isLoading: isLoadingTree } = useSWR<SatoNode>(
-    selectedSatoId ? `http://localhost:8000/trazabilidad/arbol/${selectedSatoId}` : null,
+    selectedSatoId ? `http://localhost:8000/logs/sato/${selectedSatoId}/arbol` : null,
     fetcher
   );
 
@@ -169,6 +170,7 @@ export default function TrazabilidadPage() {
               <option value="FRACCIONAMIENTO">Fraccionamiento</option>
               <option value="VENTA_CAJA">Venta en Caja</option>
               <option value="CONTEO_AUDITORIA">Conteo/Auditoría</option>
+              <option value="PICKING_OUTBOUND">Picking & Outbound</option>
             </select>
           </div>
         </div>

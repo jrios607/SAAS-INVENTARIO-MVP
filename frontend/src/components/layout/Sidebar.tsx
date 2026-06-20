@@ -1,20 +1,57 @@
 "use client";
 
+import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Package, Grid3X3, Warehouse, PackageMinus, ClipboardList } from "lucide-react";
+import { 
+  LayoutDashboard, Package, Grid3X3, Warehouse, 
+  PackageMinus, ClipboardList, BoxSelect, Map,
+  ChevronDown, ChevronRight 
+} from "lucide-react";
 
-const navItems = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
-  { name: "Catálogo", href: "/catalogo", icon: Package },
-  { name: "Plano 2D (Patentes)", href: "/patentes", icon: Grid3X3 },
-  { name: "Recepción Bodega", href: "/recepcion", icon: Warehouse },
-  { name: "Ajustes de Inventario", href: "/ajustes", icon: PackageMinus },
-  { name: "Trazabilidad", href: "/trazabilidad", icon: ClipboardList },
+const navGroups = [
+  {
+    id: "general",
+    title: "Visión General",
+    items: [
+      { name: "Dashboard", href: "/", icon: LayoutDashboard },
+      { name: "Catálogo", href: "/catalogo", icon: Package },
+    ]
+  },
+  {
+    id: "espacio",
+    title: "Gestión de Espacio",
+    items: [
+      { name: "Plano 2D (Patentes)", href: "/patentes", icon: Grid3X3 },
+      { name: "Plano 2D (Bodega)", href: "/plano-bodega", icon: Map },
+    ]
+  },
+  {
+    id: "operaciones",
+    title: "Operaciones",
+    items: [
+      { name: "Recepción Bodega", href: "/recepcion", icon: Warehouse },
+      { name: "Ajustes de Inventario", href: "/ajustes", icon: PackageMinus },
+      { name: "Preparación (Picking)", href: "/picking", icon: BoxSelect },
+      { name: "Trazabilidad", href: "/trazabilidad", icon: ClipboardList },
+    ]
+  }
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [openGroups, setOpenGroups] = useState({ 
+    general: true, 
+    espacio: true, 
+    operaciones: true 
+  });
+
+  const toggleGroup = (groupId: string) => {
+    setOpenGroups(prev => ({ 
+      ...prev, 
+      [groupId]: !prev[groupId as keyof typeof prev] 
+    }));
+  };
 
   return (
     <aside className="w-64 bg-slate-900 text-slate-300 h-screen flex flex-col fixed left-0 top-0 border-r border-slate-700/60 shadow-xl">
@@ -32,33 +69,49 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        <p className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold px-3 mb-2">
-          Módulos
-        </p>
-        {navItems.map((item) => {
-          const isActive = pathname === item.href;
-          const Icon = item.icon;
+      <nav className="flex-1 px-3 py-4 overflow-y-auto">
+        {navGroups.map((group) => {
+          const isOpen = openGroups[group.id as keyof typeof openGroups];
           return (
-            <Link
-              key={item.name}
-              href={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150 group relative
-                ${isActive
-                  ? "bg-emerald-500/15 text-emerald-400 font-semibold"
-                  : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-                }`}
-            >
-              {/* Barra activa a la izquierda */}
-              {isActive && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-emerald-500 rounded-r-full" />
-              )}
-              <Icon
-                size={17}
-                className={`flex-shrink-0 transition-colors ${isActive ? "text-emerald-400" : "text-slate-500 group-hover:text-slate-300"}`}
-              />
-              <span className="text-sm truncate">{item.name}</span>
-            </Link>
+            <div key={group.id} className="mb-4">
+              <button 
+                onClick={() => toggleGroup(group.id)}
+                className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-semibold text-slate-500 tracking-widest uppercase hover:text-slate-300 transition-colors focus:outline-none"
+              >
+                <span>{group.title}</span>
+                {isOpen ? <ChevronDown size={14} className="text-slate-500" /> : <ChevronRight size={14} className="text-slate-500" />}
+              </button>
+              
+              <div 
+                className={`overflow-hidden transition-all duration-300 ease-in-out space-y-1 ${isOpen ? 'max-h-96 opacity-100 mt-2' : 'max-h-0 opacity-0'}`}
+              >
+                {group.items.map((item) => {
+                  const isActive = pathname === item.href;
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150 group relative
+                        ${isActive
+                          ? "bg-emerald-500/15 text-emerald-400 font-semibold"
+                          : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+                        }`}
+                    >
+                      {/* Barra activa a la izquierda */}
+                      {isActive && (
+                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-emerald-500 rounded-r-full" />
+                      )}
+                      <Icon
+                        size={17}
+                        className={`flex-shrink-0 transition-colors ${isActive ? "text-emerald-400" : "text-slate-500 group-hover:text-slate-300"}`}
+                      />
+                      <span className="text-sm truncate">{item.name}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
           );
         })}
       </nav>

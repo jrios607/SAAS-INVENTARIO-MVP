@@ -1,14 +1,14 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import GridLayout, { Layout } from "react-grid-layout";
-import "react-grid-layout/css/styles.css";
-import "react-resizable/css/styles.css";
+import dynamic from "next/dynamic";
+const PlanoInteractivo = dynamic(() => import("@/components/canvas/PlanoInteractivo").then(mod => mod.PlanoInteractivo), { ssr: false });
 
 import { 
   getPatentes, createPatente, updatePatente, getStockPatente, 
   getProductos, deletePatente, getSatosDisponibles, moverSatoAVitrina, 
-  getPatenteCompliance, Patente, StockItem, Producto, SatoDisponible, ComplianceResponse 
+  getPatenteCompliance, getComplianceBatch, getDecoraciones, createDecoracion, updateDecoracion, deleteDecoracion,
+  Patente, StockItem, Producto, SatoDisponible, ComplianceResponse, DecoracionPlano 
 } from "@/services/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { SubmapEditor } from "@/components/SubmapEditor";
 import {
   Save, Plus, Settings, Lock, Package, Loader2, AlertCircle, Trash2,
-  Pencil, PencilOff, CheckCircle2, ArrowRight, Box, Layers, ChevronDown, ChevronRight
+  Pencil, PencilOff, CheckCircle2, ArrowRight, Box, Layers, ChevronDown, ChevronRight, RotateCw
 } from "lucide-react";
 
 // ─── Paleta de colores por área ───────────────────────────────────────────────
@@ -100,6 +100,12 @@ const PlanogramGrid = ({ stock, submapeo }: { stock: StockItem[], submapeo: any 
 
   return (
     <div className="flex flex-col gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-inner overflow-x-auto">
+      {!esperadosSet.size && (
+        <div className="flex flex-col items-center justify-center p-4 gap-2 text-slate-400 bg-white rounded-lg border border-slate-200 shadow-sm">
+          <AlertCircle size={20} className="text-amber-400" />
+          <p className="text-sm font-medium">El planograma tiene cuadrícula ({filas}x{columnas}) pero no hay SKUs asignados.</p>
+        </div>
+      )}
       <div 
         className="grid gap-2 min-w-max"
         style={{
@@ -114,7 +120,11 @@ const PlanogramGrid = ({ stock, submapeo }: { stock: StockItem[], submapeo: any 
               const matchingStock = sku ? stock.filter(s => s.sku === sku && s.nivel_estante === r + 1 && s.frente_posicion === c + 1) : [];
               
               if (!sku) {
-                 return <div key={`${r}-${c}`} className="bg-slate-100/50 rounded-lg border border-slate-200/50 shadow-sm flex items-center justify-center opacity-60" />;
+                 return (
+                   <div key={`${r}-${c}`} className="bg-slate-100/50 rounded-lg border border-slate-200/50 shadow-sm flex items-center justify-center opacity-60">
+                     <span className="text-xs text-slate-400 font-medium">Vacío</span>
+                   </div>
+                 );
               }
               
               if (matchingStock.length === 0) {
@@ -158,6 +168,7 @@ const PlanogramGrid = ({ stock, submapeo }: { stock: StockItem[], submapeo: any 
 
 export default function PatentesPage() {
   const [layout, setLayout] = useState<any[]>([]);
+  const [decoraciones, setDecoraciones] = useState<any[]>([]);
   const [complianceData, setComplianceData] = useState<Record<string, ComplianceResponse>>({});
   
   const [isLoading, setIsLoading] = useState(true);
@@ -166,6 +177,7 @@ export default function PatentesPage() {
 
   // ── Modo Edición ──
   const [editMode, setEditMode] = useState(false);
+  const [showAddMenu, setShowAddMenu] = useState(false);
 
   // ── Modal: Configurar nuevo mueble ──
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
@@ -218,28 +230,33 @@ export default function PatentesPage() {
     setIsLoading(true);
     const data = await getPatentes();
     setLayout(
-      data.map((p) => ({
-        i: p.id_patente,
-        x: p.coordenada_x,
-        y: p.coordenada_y,
-        w: p.ancho,
-        h: p.largo,
-        static: true, 
-        isNew: false,
-        area: p.area_pasillo,
-        tipo: p.tipo_mueble,
-        url_imagen_planograma: p.url_imagen_planograma || "",
-        productos_asignados: p.productos_asignados || [],
-        submapeo_grid: p.submapeo_grid || null,
-      }))
+      data.map((p) => {
+        // Si las coordenadas son demasiado pequeñas (ej: w: 4, x: 0), las escalamos x40 para que se vean bien en el canvas
+        const scale = p.ancho < 20 ? 40 : 1; 
+        return {
+          i: p.id_patente,
+          x: p.coordenada_x * scale,
+          y: p.coordenada_y * scale,
+          w: p.ancho * scale,
+          h: p.largo * scale,
+          rotacion: p.rotacion || 0,
+          static: true, 
+          isNew: false,
+          area: p.area_pasillo,
+          tipo: p.tipo_mueble,
+          url_imagen_planograma: p.url_imagen_planograma || "",
+          productos_asignados: p.productos_asignados || [],
+          submapeo_grid: p.submapeo_grid || null,
+        }
+      })
     );
     
-    // Cargar Compliance
-    const compliances: Record<string, ComplianceResponse> = {};
-    await Promise.all(data.map(async (p) => {
-      const c = await getPatenteCompliance(p.id_patente);
-      if (c) compliances[p.id_patente] = c;
-    }));
+    // Cargar Decoraciones
+    const decs = await getDecoraciones();
+    setDecoraciones(decs);
+    
+    // Cargar Compliance (Batch)
+    const compliances = await getComplianceBatch();
     setComplianceData(compliances);
     
     setIsLoading(false);
@@ -257,21 +274,77 @@ export default function PatentesPage() {
     );
   }, [editMode]);
 
-  const handleAddMueble = () => {
-    const id = `temp_${Date.now()}`;
+  const handleAddMueble = (w: number, h: number, tipoStr: string) => {
+    const id = `temp_gondola_${Date.now()}`;
     setLayout((prev) => [
       ...prev,
-      { i: id, x: 0, y: 0, w: 4, h: 2, static: false, isNew: true, area: "Abarrotes", tipo: "Góndola", url_imagen_planograma: "", productos_asignados: [], submapeo_grid: null },
+      { i: id, x: window.innerWidth/3, y: 100, w: w*40, h: h*40, rotacion: 0, static: false, isNew: true, area: "Abarrotes", tipo: tipoStr, url_imagen_planograma: "", productos_asignados: [], submapeo_grid: null },
     ]);
+    setShowAddMenu(false);
   };
 
-  const handleLayoutChange = (newLayout: any) => {
-    setLayout((prev) =>
-      newLayout.map((item: any) => {
-        const existing = prev.find((l) => l.i === item.i);
-        return { ...existing, ...item };
-      })
-    );
+  const handleAddTexto = () => {
+    const id = `temp_texto_${Date.now()}`;
+    setDecoraciones(prev => [
+      ...prev,
+      { id, tipo: "TEXTO", x: window.innerWidth/3, y: 50, w: 200, h: 50, rotacion: 0, config: { text: "Nuevo Pasillo", fontSize: 32, fill: "#334155" }, isNew: true }
+    ]);
+    setShowAddMenu(false);
+  };
+
+  const handleLayoutChange = (itemId: string, newAttrs: any) => {
+    let isValid = true;
+
+    setLayout((prev) => {
+      const updatedItem = { ...prev.find(i => i.i === itemId), ...newAttrs };
+      
+      // Simple AABB Collision Check
+      const hasCollision = prev.some(other => {
+         if (other.i === itemId) return false;
+         
+         const rot1 = updatedItem.rotacion || 0;
+         const rot2 = other.rotacion || 0;
+
+         // Check if they are swapped (90 or 270 degrees)
+         const isSwapped1 = Math.abs(rot1) % 180 !== 0;
+         const isSwapped2 = Math.abs(rot2) % 180 !== 0;
+
+         const bw1 = isSwapped1 ? updatedItem.h : updatedItem.w;
+         const bh1 = isSwapped1 ? updatedItem.w : updatedItem.h;
+         const bw2 = isSwapped2 ? other.h : other.w;
+         const bh2 = isSwapped2 ? other.w : other.h;
+
+         return !(updatedItem.x + bw1 <= other.x || 
+                  updatedItem.x >= other.x + bw2 || 
+                  updatedItem.y + bh1 <= other.y || 
+                  updatedItem.y >= other.y + bh2);
+      });
+
+      if (hasCollision) {
+        isValid = false;
+        return prev;
+      }
+
+      return prev.map((item) => (item.i === itemId ? updatedItem : item));
+    });
+
+    return isValid;
+  };
+
+  const handleDecoracionChange = (itemId: string, newAttrs: any) => {
+    setDecoraciones((prev) => {
+      // Se eliminó la destrucción automática para permitir dejar textos vacíos ("") temporalmente
+      return prev.map((item) => {
+        if (item.id === itemId) {
+           const updated = { ...item, ...newAttrs };
+           if (newAttrs.text !== undefined || newAttrs.fontSize !== undefined || newAttrs.fill !== undefined) {
+             updated.config = { ...item.config, text: newAttrs.text ?? item.config?.text, fontSize: newAttrs.fontSize ?? item.config?.fontSize, fill: newAttrs.fill ?? item.config?.fill };
+           }
+           return updated;
+        }
+        return item;
+      });
+    });
   };
 
   const handleDeletePatente = async () => {
@@ -400,10 +473,11 @@ export default function PatentesPage() {
         id_patente: item.i,
         area_pasillo: item.area,
         tipo_mueble: item.tipo,
-        coordenada_x: item.x,
-        coordenada_y: item.y,
-        ancho: item.w,
-        largo: item.h,
+        coordenada_x: Math.round(item.x / 40),
+        coordenada_y: Math.round(item.y / 40),
+        ancho: Math.round(item.w / 40),
+        largo: Math.round(item.h / 40),
+        rotacion: item.rotacion,
         url_imagen_planograma: item.url_imagen_planograma,
         productos_asignados: item.productos_asignados,
         submapeo_grid: item.submapeo_grid,
@@ -416,15 +490,27 @@ export default function PatentesPage() {
     for (const item of existingItems) {
       try {
         await updatePatente(item.i, {
-          coordenada_x: item.x,
-          coordenada_y: item.y,
-          ancho: item.w,
-          largo: item.h,
+          coordenada_x: Math.round(item.x / 40),
+          coordenada_y: Math.round(item.y / 40),
+          ancho: Math.round(item.w / 40),
+          largo: Math.round(item.h / 40),
+          rotacion: item.rotacion,
           url_imagen_planograma: item.url_imagen_planograma,
           productos_asignados: item.productos_asignados,
           submapeo_grid: item.submapeo_grid,
         });
       } catch (e: any) { errors.push(`UPDATE "${item.i}": ${e.message}`); }
+    }
+
+    // ── Guardar Decoraciones Nuevas o Editadas ──
+    for (const dec of decoraciones) {
+       try {
+         if (dec.isNew) {
+           await createDecoracion({ id: dec.id, tipo: dec.tipo, x: dec.x, y: dec.y, w: dec.w, h: dec.h, rotacion: dec.rotacion, config: dec.config });
+         } else {
+           await updateDecoracion(dec.id, { x: dec.x, y: dec.y, w: dec.w, h: dec.h, rotacion: dec.rotacion, config: dec.config });
+         }
+       } catch(e: any) { errors.push(`DEC "${dec.id}": ${e.message}`); }
     }
 
     setIsSaving(false);
@@ -477,29 +563,52 @@ export default function PatentesPage() {
             {editMode ? "Salir Edición" : "Modo Edición"}
           </button>
 
-          <button
-            onClick={handleAddMueble}
-            className="flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 hover:scale-[1.02] active:scale-100 text-slate-700 px-3.5 py-2 rounded-lg text-sm font-medium transition-all shadow-sm"
-          >
-            <Plus size={16} /> Añadir Mueble
-          </button>
+          {editMode && (
+            <>
+              <div className="relative z-50">
+                <button
+                  onClick={() => setShowAddMenu(!showAddMenu)}
+                  className="flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 hover:scale-[1.02] active:scale-100 text-slate-700 px-3.5 py-2 rounded-lg text-sm font-medium transition-all shadow-sm"
+                >
+                  <Plus size={16} /> Añadir Mueble <ChevronDown size={14} className={`transition-transform ${showAddMenu ? "rotate-180" : ""}`} />
+                </button>
+                {showAddMenu && (
+                  <div className="absolute top-full mt-2 left-0 w-60 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden flex flex-col">
+                    <button onClick={() => handleAddMueble(2, 6, "Góndola")} className="text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 border-b border-slate-100 font-medium">
+                      Añadir Góndola
+                    </button>
+                    <button onClick={() => handleAddMueble(2, 2, "Cabecera / Isla")} className="text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 font-medium">
+                      Cabecera / Isla (w:2, h:2)
+                    </button>
+                  </div>
+                )}
+              </div>
+              
+              <button
+                onClick={handleAddTexto}
+                className="flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 hover:scale-[1.02] active:scale-100 text-slate-700 px-3.5 py-2 rounded-lg text-sm font-medium transition-all shadow-sm"
+              >
+                <Pencil size={16} /> Etiqueta Texto
+              </button>
 
-          <button
-            onClick={handleSaveLayout}
-            disabled={isSaving}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all shadow-sm hover:scale-[1.02] active:scale-100 disabled:opacity-60 disabled:cursor-not-allowed
-              ${saveSuccess
-                ? "bg-green-500 border-green-600 text-white"
-                : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20"
-              }`}
-          >
-            {isSaving
-              ? <><Loader2 size={16} className="animate-spin" /> Guardando...</>
-              : saveSuccess
-                ? <><CheckCircle2 size={16} /> Guardado</>
-                : <><Save size={16} /> Guardar Diseño</>
-            }
-          </button>
+              <button
+                onClick={handleSaveLayout}
+                disabled={isSaving}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all shadow-sm hover:scale-[1.02] active:scale-100 disabled:opacity-60 disabled:cursor-not-allowed
+                  ${saveSuccess
+                    ? "bg-green-500 border-green-600 text-white"
+                    : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20"
+                  }`}
+              >
+                {isSaving
+                  ? <><Loader2 size={16} className="animate-spin" /> Guardando...</>
+                  : saveSuccess
+                    ? <><CheckCircle2 size={16} /> Guardado</>
+                    : <><Save size={16} /> Guardar Diseño</>
+                }
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -533,87 +642,17 @@ export default function PatentesPage() {
       </div>
 
       {/* ── Canvas ── */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 overflow-x-auto relative">
-        <div
-          className="min-w-[1200px]"
-          style={{
-            minHeight: "680px",
-            backgroundColor: "#f8fafc",
-            backgroundImage: "radial-gradient(circle, #cbd5e1 1px, transparent 1px)",
-            backgroundSize: "30px 30px",
-          }}
-        >
-          {/* @ts-ignore */}
-          {React.createElement(GridLayout as any, {
-            className: "layout",
-            layout: layout,
-            cols: 40,
-            rowHeight: 30,
-            width: 1200,
-            onLayoutChange: handleLayoutChange,
-            isDraggable: true,
-            isResizable: true,
-            compactType: null,
-            preventCollision: true,
-          }, layout.map((item) => {
-              const isEditable = editMode && !item.isNew;
-              const colors = item.isNew
-                ? { bg: "bg-emerald-100", border: "border-emerald-500", text: "text-emerald-800" }
-                : isEditable
-                  ? { bg: "bg-amber-400", border: "border-amber-500", text: "text-white" }
-                  : getAreaColor(item.area);
-
-              const compliance = complianceData[item.i];
-              let borderColor = colors.border;
-              let barColor = "";
-              
-              if (compliance && !item.isNew && !editMode) {
-                if (compliance.cumplimiento_porcentaje >= 80) {
-                  borderColor = "border-emerald-500 border-2";
-                  barColor = "bg-emerald-400";
-                } else if (compliance.cumplimiento_porcentaje >= 50) {
-                  borderColor = "border-amber-400 border-2";
-                  barColor = "bg-amber-400";
-                } else {
-                  borderColor = "border-red-500 border-2 shadow-[0_0_10px_rgba(239,68,68,0.5)]";
-                  barColor = "bg-red-500";
-                }
-              }
-
-              return (
-                <div
-                  key={item.i}
-                  data-grid={{ x: item.x, y: item.y, w: item.w, h: item.h, static: item.static }}
-                  className={`flex flex-col items-center justify-center rounded transition-all overflow-hidden select-none relative
-                    ${colors.bg} ${borderColor} ${colors.text}
-                    ${item.static
-                      ? "cursor-pointer hover:brightness-110"
-                      : "cursor-grab active:cursor-grabbing shadow-md"
-                    }`}
-                  onDoubleClick={() => handleItemDoubleClick(item.i)}
-                  title={compliance ? `Cumplimiento: ${compliance.cumplimiento_porcentaje.toFixed(1)}%` : ''}
-                >
-                  <div className="flex items-center gap-1 font-bold text-[11px] tracking-tight truncate px-1 z-10">
-                    {item.static && !item.isNew && <Lock size={10} className="opacity-70 flex-shrink-0" />}
-                    {isEditable && <Pencil size={10} className="opacity-80 flex-shrink-0" />}
-                    <span className="truncate">{item.i.startsWith("temp_") ? "NUEVO" : item.i}</span>
-                    {item.isNew && <Settings size={10} className="opacity-70 flex-shrink-0" />}
-                  </div>
-                  <div className="text-[9px] opacity-80 uppercase tracking-widest mt-0.5 z-10">{item.tipo}</div>
-                  
-                  {/* Barra de Capacidad/Cumplimiento */}
-                  {compliance && !item.isNew && !editMode && (
-                    <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-black/20">
-                      <div 
-                        className={`h-full ${barColor} transition-all duration-500`}
-                        style={{ width: `${compliance.cumplimiento_porcentaje}%` }}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            }))}
-        </div>
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden relative">
+        <PlanoInteractivo
+          layout={layout}
+          decoraciones={decoraciones}
+          editMode={editMode}
+          complianceData={complianceData}
+          onLayoutChange={handleLayoutChange}
+          onDecoracionChange={handleDecoracionChange}
+          onItemDoubleClick={handleItemDoubleClick}
+          getAreaColor={getAreaColor}
+        />
       </div>
 
       {/* ── Modal: Configurar nuevo mueble ── */}

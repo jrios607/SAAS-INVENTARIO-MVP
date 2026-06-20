@@ -1,26 +1,12 @@
-from fastapi import APIRouter, Depends, Query
+import uuid
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, or_
-from typing import List, Optional
+from typing import Optional
 from datetime import date, datetime
 
-from app.database import get_db
 from app.models import Log_Transaccional, Sato, Usuario
-from app.schemas import LogTransaccionalResponse
-import uuid
 
-router = APIRouter(prefix="/trazabilidad", tags=["Trazabilidad"])
-
-@router.get("/logs", response_model=LogTransaccionalResponse)
-def get_logs(
-    q: Optional[str] = None,
-    accion: Optional[str] = None,
-    fecha_inicio: Optional[date] = None,
-    fecha_fin: Optional[date] = None,
-    limit: int = Query(50, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
-):
+def get_logs_service(db: Session, q: Optional[str], accion: Optional[str], fecha_inicio: Optional[date], fecha_fin: Optional[date], limit: int, offset: int) -> dict:
     query = db.query(Log_Transaccional, Sato, Usuario).outerjoin(
         Sato, Log_Transaccional.sato_id == Sato.sato_id
     ).outerjoin(
@@ -37,9 +23,6 @@ def get_logs(
     if accion:
         query = query.filter(Log_Transaccional.accion == accion)
     if fecha_inicio:
-        # Assuming fecha_hora is UTC timezone aware or naive.
-        # Simple date comparison works if handled correctly by SQLAlchemy, 
-        # but to be safe we can use date() function or construct a datetime.
         from datetime import time
         start_datetime = datetime.combine(fecha_inicio, time.min)
         query = query.filter(Log_Transaccional.fecha_hora >= start_datetime)
@@ -81,24 +64,26 @@ def get_logs(
         "offset": offset
     }
 
-@router.get("/arbol/{sato_id}")
-def get_arbol_sato(sato_id: uuid.UUID, db: Session = Depends(get_db)):
-    # 1. Obtener el SATO actual
-    sato_actual = db.query(Sato).filter(Sato.sato_id == sato_id).first()
-    if not sato_actual:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="SATO no encontrado")
+def get_arbol_sato_service(db: Session, sato_id: uuid.UUID) -> dict:
+    """MEDIO-10: Carga todos los descendientes en 1 sola query con CTE."""
+    raiz = db.query(Sato).filter(Sato.sato_id == sato_id).first()
+    if not raiz:
+        raise ValueError("SATO no encontrado")
         
-    # 2. Encontrar el SATO "Raíz" (Contenedor superior) si es que tiene padre
-    sato_raiz = sato_actual
-    while sato_raiz.padre_id:
-        padre = db.query(Sato).filter(Sato.sato_id == sato_raiz.padre_id).first()
+    while raiz.padre_id:
+        padre = db.query(Sato).filter(Sato.sato_id == raiz.padre_id).first()
         if not padre: break
-        sato_raiz = padre
+        raiz = padre
         
-    # 3. Función recursiva para serializar el árbol
+    todos = db.query(Sato).filter(
+        or_(Sato.sato_id == raiz.sato_id, Sato.padre_id == raiz.sato_id)
+    ).all()
+    
+    hijos_map = {}
+    for s in todos:
+        hijos_map.setdefault(s.padre_id, []).append(s)
+        
     def build_tree(sato):
-        hijos = db.query(Sato).filter(Sato.padre_id == sato.sato_id).all()
         return {
             "sato_id": str(sato.sato_id),
             "tipo_sato": sato.tipo_sato,
@@ -106,7 +91,43 @@ def get_arbol_sato(sato_id: uuid.UUID, db: Session = Depends(get_db)):
             "sku": sato.sku,
             "cantidad": sato.cantidad,
             "estado": sato.estado,
-            "hijos": [build_tree(h) for h in hijos]
+            "hijos": [build_tree(h) for h in hijos_map.get(sato.sato_id, [])]
         }
         
-    return build_tree(sato_raiz)
+    return build_tree(raiz)
+
+def buscar_por_lote(db: Session, numero_lote: str) -> dict:
+    """Busca todas las ubicaciones y el stock total de un lote específico."""
+    from app.models import Catalogo_Producto
+    
+    satos = db.query(Sato, Catalogo_Producto).join(
+        Catalogo_Producto, Sato.sku == Catalogo_Producto.sku
+    ).filter(
+        Sato.tipo_sato == "PRODUCTO",
+        Sato.lote == numero_lote,
+        Sato.cantidad > 0
+    ).all()
+    
+    if not satos:
+        return {"lote": numero_lote, "sku": "N/A", "nombre_producto": "No encontrado", "cantidad_total": 0, "satos": []}
+    
+    primer_producto = satos[0][1]
+    cantidad_total = sum(sato.cantidad for sato, _ in satos)
+    
+    satos_response = []
+    for sato, _ in satos:
+        satos_response.append({
+            "sato_id": sato.sato_id,
+            "estado": sato.estado,
+            "cantidad": sato.cantidad,
+            "ubicacion_id": sato.ubicacion_id,
+            "fecha_vencimiento": sato.fecha_vencimiento
+        })
+        
+    return {
+        "lote": numero_lote,
+        "sku": primer_producto.sku,
+        "nombre_producto": primer_producto.nombre,
+        "cantidad_total": cantidad_total,
+        "satos": satos_response
+    }
