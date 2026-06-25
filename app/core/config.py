@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 480  # 8 horas (1 turno)
     
     # ── Integración M2M ────────────────────────────────────────
-    INTEGRATION_API_KEY: str = "SG_SECRET_KEY_123" # Valor por defecto seguro para el entorno de pruebas
+    INTEGRATION_API_KEY: Optional[str] = None # Para producción debe definirse en el entorno
     ERP_WEBHOOK_URL: Optional[str] = "http://localhost:8080/wms-webhooks" # Default para desarrollo
 
     # ── CORS ───────────────────────────────────────────────────
@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     RATE_LIMIT_DEFAULT: str = "60/minute"
     RATE_LIMIT_WRITE: str = "30/minute"
     RATE_LIMIT_AUTH: str = "5/minute"
+
+    # ── Multi-Tenant ──────────────────────────────────────────
+    DEFAULT_TENANT_ID: str = "130cc80b-1971-4332-bab3-9ee5ef66063b"
 
     class Config:
         env_file = ".env"

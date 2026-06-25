@@ -51,6 +51,12 @@ BASE_BACKOFF_S = 60   # segundos base para el backoff exponencial
 
 # ── Helper: sesión de DB síncrona para tareas Celery ─────────────────────
 
+def _set_tenant_context(tenant_id: str = None):
+    """Establece el contexto de tenant para workers Celery."""
+    from app.core.tenant import current_tenant_id
+    if tenant_id:
+        current_tenant_id.set(tenant_id)
+
 def _get_sync_db_session():
     """
     Crea una sesión SQLAlchemy síncrona para usar dentro de workers Celery.
@@ -79,7 +85,9 @@ def _sign_payload(payload_json: str) -> str:
 
     Header enviado: X-SG-Signature: sha256=<hex_digest>
     """
-    secret = os.environ.get("INTEGRATION_API_KEY", "SG_SECRET_KEY_123")
+    secret = os.environ.get("INTEGRATION_API_KEY")
+    if not secret:
+        raise ValueError("INTEGRATION_API_KEY is not set")
     signature = hmac.new(
         secret.encode("utf-8"),
         payload_json.encode("utf-8"),
@@ -106,6 +114,7 @@ def notify_erp_task(
     event_type: str,
     payload: Dict[str, Any],
     webhook_url: str,
+    tenant_id: str = None,
 ) -> Dict[str, Any]:
     """
     Tarea Celery para enviar webhooks al ERP de forma asíncrona.
@@ -128,6 +137,7 @@ def notify_erp_task(
     Returns:
         dict con status final y detalles de la entrega
     """
+    _set_tenant_context(tenant_id)
     db = _get_primary_session()
 
     try:
@@ -345,6 +355,7 @@ def calculate_compliance_batch_task() -> Dict[str, Any]:
     pre-calcula el compliance de todas las patentes y lo guarda en Redis
     para que la carga del mapa 2D sea instantánea.
     """
+    _set_tenant_context()  # Compliance batch runs for all tenants or default
     db = _get_sync_db_session()
     try:
         from app.services.slotting_service import get_compliance_batch
