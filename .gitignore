@@ -28,3 +28,7 @@ target/
 .settings/
 .DS_Store
 .vscode/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
