@@ -42,6 +42,7 @@ def get_dashboard_kpis(db: Session = Depends(get_db_read)):
             Catalogo_Producto.nombre,
             func.count(Log_Transaccional.id).label("cantidad_mermas")
         )
+        .select_from(Log_Transaccional)
         .join(Sato, Log_Transaccional.sato_id == Sato.sato_id)
         .join(Catalogo_Producto, Sato.sku == Catalogo_Producto.sku)
         .filter(

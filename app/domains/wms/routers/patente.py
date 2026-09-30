@@ -67,7 +67,14 @@ def get_compliance_batch_endpoint(db: Session = Depends(get_db_read), user = Dep
             
         logger.info("CACHE MISS: Calculando compliance batch en vivo y encolando actualización.")
         # Disparar actualización asíncrona para la próxima vez
-        calculate_compliance_batch_task.delay()
+        try:
+            from app.core.cache import _get_redis
+            if _get_redis() is not None:
+                calculate_compliance_batch_task.delay()
+            else:
+                logger.warning("Redis no disponible, omitiendo tarea asíncrona.")
+        except Exception as e:
+            logger.warning(f"No se pudo encolar calculate_compliance_batch_task: {e}")
         
         # Fallback síncrono para esta petición puntual
         resultado = get_compliance_batch(db)
@@ -209,4 +216,31 @@ def get_compliance_patente(id_patente: str, db: Session = Depends(get_db), user 
         logging.exception("Error inesperado en get_compliance_patente")
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
-
+@router.get("/{id_patente}/stock", response_model=list)
+def get_stock_patente(id_patente: str, db: Session = Depends(get_db), user = Depends(get_current_user)):
+    """
+    Obtiene el stock actual en una patente (góndola) específica.
+    """
+    try:
+        patente = db.query(Patente).filter(Patente.id_patente == id_patente).first()
+        if not patente:
+            raise HTTPException(status_code=404, detail="Patente no encontrada")
+            
+        satos = db.query(Sato).filter(Sato.ubicacion_id == id_patente, Sato.estado == "Vitrina").all()
+        
+        resultado = []
+        for sato in satos:
+            resultado.append({
+                "sku": sato.sku,
+                "lote": sato.lote,
+                "cantidad": sato.cantidad,
+                "fecha_vencimiento": sato.fecha_vencimiento,
+                "nivel_estante": sato.nivel_estante,
+                "frente_posicion": sato.frente_posicion
+            })
+        return resultado
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error en get_stock_patente")
+        raise HTTPException(status_code=500, detail="Error interno del servidor.")

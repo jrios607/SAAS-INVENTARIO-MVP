@@ -26,7 +26,7 @@ export function DashboardCharts({ data }: DashboardChartsProps) {
           {data.distribucion_inventario.length === 0 ? (
             <EmptyState message="No hay inventario registrado para distribuir." icon={<BarChart3 />} />
           ) : (
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="99%" height="100%" minWidth={1} minHeight={1}>
               <PieChart>
                 <Pie
                   data={data.distribucion_inventario}
@@ -60,7 +60,7 @@ export function DashboardCharts({ data }: DashboardChartsProps) {
           {data.top_mermas.length === 0 ? (
             <EmptyState message="Excelente. No se han registrado mermas en los últimos 7 días." icon={<BarChart3 />} />
           ) : (
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="99%" height="100%" minWidth={1} minHeight={1}>
               <BarChart
                 data={data.top_mermas}
                 margin={{ top: 20, right: 30, left: 20, bottom: 60 }}

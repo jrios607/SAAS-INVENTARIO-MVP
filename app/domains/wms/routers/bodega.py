@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Sato
-from app.schemas import PalletReceptionRequest, PalletReceptionResponse, LpnReceptionRequest, LpnReceptionResponse, AjusteInventarioRequest, SatoRecepcionDetalle
+from app.schemas import PalletReceptionRequest, PalletReceptionResponse, LpnReceptionRequest, LpnReceptionResponse, AjusteInventarioRequest, SatoRecepcionDetalle, SatoModel
 from app.core.security import get_current_user, require_role
 from app.services.recepcion_service import recepcionar_pallet, recepcionar_lpn, get_satos_en_recepcion, DuplicateLPNError
 from app.services.inventario_service import ajustar_inventario_sato, InventarioError
@@ -62,7 +62,7 @@ def route_recepcionar_lpn(request: LpnReceptionRequest, background_tasks: Backgr
         logging.exception("Error inesperado en recepcionar_lpn")
         raise HTTPException(status_code=500, detail="Error interno del servidor al recepcionar LPN.")
 
-@router.get("/satos/disponibles")
+@router.get("/satos/disponibles", response_model=list[SatoModel])
 def route_get_satos_disponibles(db: Session = Depends(get_db)):
     try:
         satos = db.query(Sato).filter(

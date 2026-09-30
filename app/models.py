@@ -1,23 +1,37 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Integer, Float, Date, DateTime, ForeignKey, Uuid, JSON, Index, Boolean
+from sqlalchemy import Column, String, Integer, Float, Date, DateTime, ForeignKey, Uuid, JSON, Index, Boolean, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
 
 
 
+class Tenant(Base):
+    __tablename__ = 'tenant'
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
+    nombre = Column(String, nullable=False, unique=True)
+    activo = Column(Boolean, default=True)
+
 class Categoria(Base):
     __tablename__ = 'categoria'
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'nombre', name='uq_categoria_tenant_nombre'),
+    )
+    tenant_id = Column(String, ForeignKey('tenant.id'), nullable=False, index=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
-    nombre = Column(String, unique=True, nullable=False, index=True) # Ej: "Abarrotes", "Lácteos"
+    nombre = Column(String, nullable=False, index=True) # Ej: "Abarrotes", "Lácteos"
     color_hex = Column(String, nullable=False, default="#94a3b8") # Para pintar el plano 2D y Dashboards
 
 class Catalogo_Producto(Base):
     __tablename__ = 'catalogo_producto'
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'ean', name='uq_producto_tenant_ean'),
+    )
+    tenant_id = Column(String, ForeignKey('tenant.id'), nullable=False, index=True)
     sku = Column(String, primary_key=True, index=True)
     nombre = Column(String, nullable=False)
-    ean = Column(String, nullable=False, unique=True, index=True)
+    ean = Column(String, nullable=False, index=True)
     
     # Agrupación Global
     familia = Column(String, nullable=True) # Ej: Abarrotes, Frescos, Non-Food
@@ -39,6 +53,7 @@ class Catalogo_Producto(Base):
 
 class Patente(Base):
     __tablename__ = 'patente'
+    tenant_id = Column(String, ForeignKey('tenant.id'), nullable=False, index=True)
     
     id_patente = Column(String, primary_key=True, index=True) # Ej: "485" o "486"
     area_pasillo = Column(String, nullable=False) # Ej: "AREA 20"
@@ -56,6 +71,7 @@ class Patente(Base):
 
 class DecoracionPlano(Base):
     __tablename__ = 'decoracion_plano'
+    tenant_id = Column(String, ForeignKey('tenant.id'), nullable=False, index=True)
     
     id = Column(String, primary_key=True, index=True) # UUID o string ID
     tipo = Column(String, nullable=False) # "TEXTO", "ZONA", etc.
@@ -68,13 +84,18 @@ class DecoracionPlano(Base):
 
 class Usuario(Base):
     __tablename__ = 'usuario'
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'nombre', name='uq_usuario_tenant_nombre'),
+    )
+    tenant_id = Column(String, ForeignKey('tenant.id'), nullable=False, index=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
-    nombre = Column(String, nullable=False, unique=True)
+    nombre = Column(String, nullable=False)
     password_hash = Column(String, nullable=True)  # Nullable para MVP
     rol = Column(String, nullable=False, default="Operario")
 
 class Sato(Base):
     __tablename__ = 'satos'
+    tenant_id = Column(String, ForeignKey('tenant.id'), nullable=False, index=True)
     sato_id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     padre_id = Column(Uuid(as_uuid=True), ForeignKey('satos.sato_id'), nullable=True) 
     
@@ -82,7 +103,7 @@ class Sato(Base):
     tipo_sato = Column(String, nullable=False, default="PRODUCTO")
     
     # LPN (License Plate Number) para los pallets consolidados
-    lpn = Column(String, nullable=True, unique=True, index=True) 
+    lpn = Column(String, nullable=True, index=True) 
     
     # Campos de producto (Opcionales para los contenedores)
     sku = Column(String, ForeignKey('catalogo_producto.sku'), nullable=True, index=True)
@@ -113,6 +134,7 @@ class Log_Transaccional(Base):
         Index('idx_log_sato_fecha', 'sato_id', 'fecha_hora'),
     )
 
+    tenant_id = Column(String, ForeignKey('tenant.id'), nullable=False, index=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     sato_id = Column(Uuid(as_uuid=True), ForeignKey('satos.sato_id'), nullable=False, index=True)
     usuario_id = Column(Integer, ForeignKey('usuario.id'), nullable=True)
@@ -122,12 +144,14 @@ class Log_Transaccional(Base):
 
 class ASN_Padre(Base):
     __tablename__ = 'asn_padre'
+    tenant_id = Column(String, ForeignKey('tenant.id'), nullable=False, index=True)
     lpn = Column(String, primary_key=True, index=True) # Ej: 8089962588
     origen = Column(String, nullable=False) # Ej: "Secos Santiago Lo Aguirre"
     estado = Column(String, default="EN_TRANSITO") # EN_TRANSITO, RECEPCIONADO
 
 class ASN_Detalle(Base):
     __tablename__ = 'asn_detalle'
+    tenant_id = Column(String, ForeignKey('tenant.id'), nullable=False, index=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     lpn_padre = Column(String, ForeignKey('asn_padre.lpn'), nullable=False)
     sku = Column(String, ForeignKey('catalogo_producto.sku'), nullable=False)
@@ -137,12 +161,14 @@ class ASN_Detalle(Base):
 
 class Ola_Picking(Base):
     __tablename__ = 'ola_picking'
+    tenant_id = Column(String, ForeignKey('tenant.id'), nullable=False, index=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     fecha_creacion = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     estado = Column(String, default="PENDIENTE") # PENDIENTE, EN_PROGRESO, COMPLETADA
 
 class Pedido_Outbound(Base):
     __tablename__ = 'pedido_outbound'
+    tenant_id = Column(String, ForeignKey('tenant.id'), nullable=False, index=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     cliente = Column(String, nullable=False)
     estado = Column(String, default="PENDIENTE") # PENDIENTE, EN_OLA, COMPLETADO
@@ -151,6 +177,7 @@ class Pedido_Outbound(Base):
 
 class Detalle_Pedido(Base):
     __tablename__ = 'detalle_pedido'
+    tenant_id = Column(String, ForeignKey('tenant.id'), nullable=False, index=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     pedido_id = Column(Integer, ForeignKey('pedido_outbound.id'))
     sku = Column(String, ForeignKey('catalogo_producto.sku'))
@@ -158,6 +185,7 @@ class Detalle_Pedido(Base):
 
 class Tarea_Picking(Base):
     __tablename__ = 'tarea_picking'
+    tenant_id = Column(String, ForeignKey('tenant.id'), nullable=False, index=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     ola_id = Column(Integer, ForeignKey('ola_picking.id'))
     pedido_id = Column(Integer, ForeignKey('pedido_outbound.id'))
@@ -168,6 +196,7 @@ class Tarea_Picking(Base):
 
 class Integration_Log(Base):
     __tablename__ = 'integration_log'
+    tenant_id = Column(String, ForeignKey('tenant.id'), nullable=False, index=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     event_type = Column(String, nullable=False)
     payload_json = Column(String, nullable=False) # Guardaremos el payload stringificado

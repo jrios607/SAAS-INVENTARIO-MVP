@@ -112,12 +112,14 @@ def _dispatch_to_celery(log_id: int, event_type: str, payload: dict, url: str) -
     """
     try:
         from app.worker.tasks import notify_erp_task
+        from app.core.tenant import current_tenant_id
         notify_erp_task.apply_async(
             kwargs={
                 "log_id":      log_id,
                 "event_type":  event_type,
                 "payload":     payload,
                 "webhook_url": url,
+                "tenant_id":   current_tenant_id.get(),
             },
             queue="sg.integration.erp",
             # countdown=0 → ejecución inmediata (sin delay inicial)

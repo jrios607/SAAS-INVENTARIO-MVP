@@ -8,20 +8,17 @@ import { Header } from "./Header";
 export function PageLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
-  // Aislamiento completo de la ruta /pos para la Caja SaaS
   if (pathname.startsWith("/pos")) {
     return <>{children}</>;
   }
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex h-screen bg-[#050505] text-gray-200 font-sans overflow-hidden selection:bg-emerald-500/30">
       <Sidebar />
-      <div className="flex-1 flex flex-col ml-64">
+      <main className="flex-1 flex flex-col overflow-y-auto">
         <Header />
-        <main className="flex-1 p-8 overflow-y-auto">
-          {children}
-        </main>
-      </div>
+        {children}
+      </main>
     </div>
   );
 }

@@ -92,12 +92,21 @@ export default function CatalogoPage() {
       };
       await createProducto(productPayload as Omit<Producto, "tolerancia_vencimiento_dias"> & { tolerancia_vencimiento_dias: number });
       setIsModalOpen(false);
+      setFormData(INITIAL_FORM);
       await loadData();
     } catch (e: any) {
       setError(e.message || "Error al procesar la solicitud.");
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setTimeout(() => {
+      setFormData(INITIAL_FORM);
+      setError(null);
+    }, 200); // Limpiar datos post-animación de cierre
   };
 
   const filteredProducts = products.filter(p => {
@@ -134,37 +143,37 @@ export default function CatalogoPage() {
     <div className="p-6 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-300">
       
       <div>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Catálogo de Productos</h1>
-        <p className="text-slate-500 text-sm mt-1">Gestión centralizada de SKUs, Familias y existencias.</p>
+        <h1 className="text-3xl font-bold tracking-tight text-white">Catálogo de Productos</h1>
+        <p className="text-gray-400 text-sm mt-1">Gestión centralizada de SKUs, Familias y existencias.</p>
       </div>
 
       {/* ── Métricas Globales ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div className="bg-[#121212] p-6 rounded-2xl border border-[#1f1f1f] hover:border-[#2a2a2a] transition-colors flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-slate-500">Stock Global</p>
-            <p className="text-2xl font-bold text-slate-900 mt-1">{products.reduce((acc, p) => acc + p.stock, 0).toLocaleString()}</p>
+            <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">Stock Global</p>
+            <p className="text-3xl font-light text-white tracking-tight mt-1">{products.reduce((acc, p) => acc + p.stock, 0).toLocaleString()}</p>
           </div>
-          <div className="h-12 w-12 bg-indigo-50 rounded-full flex items-center justify-center">
-            <Package className="h-6 w-6 text-indigo-600" />
+          <div className="h-12 w-12 rounded-full bg-[#121212] border border-[#1f1f1f] flex items-center justify-center">
+            <Package className="h-6 w-6 text-indigo-400" />
           </div>
         </div>
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div className="bg-[#121212] p-6 rounded-2xl border border-[#1f1f1f] hover:border-[#2a2a2a] transition-colors flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-slate-500">Total SKUs</p>
-            <p className="text-2xl font-bold text-slate-900 mt-1">{products.length.toLocaleString()}</p>
+            <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">Total SKUs</p>
+            <p className="text-3xl font-light text-white tracking-tight mt-1">{products.length.toLocaleString()}</p>
           </div>
-          <div className="h-12 w-12 bg-blue-50 rounded-full flex items-center justify-center">
-            <Tags className="h-6 w-6 text-blue-600" />
+          <div className="h-12 w-12 rounded-full bg-[#121212] border border-[#1f1f1f] flex items-center justify-center">
+            <Tags className="h-6 w-6 text-blue-400" />
           </div>
         </div>
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div className="bg-[#121212] p-6 rounded-2xl border border-[#1f1f1f] hover:border-[#2a2a2a] transition-colors flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-slate-500">Familias Activas</p>
-            <p className="text-2xl font-bold text-slate-900 mt-1">{familias.length}</p>
+            <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">Familias Activas</p>
+            <p className="text-3xl font-light text-white tracking-tight mt-1">{familias.length}</p>
           </div>
-          <div className="h-12 w-12 bg-emerald-50 rounded-full flex items-center justify-center">
-            <Layers className="h-6 w-6 text-emerald-600" />
+          <div className="h-12 w-12 rounded-full bg-[#121212] border border-[#1f1f1f] flex items-center justify-center">
+            <Layers className="h-6 w-6 text-emerald-400" />
           </div>
         </div>
       </div>
@@ -174,14 +183,14 @@ export default function CatalogoPage() {
         <div className="flex flex-wrap md:flex-nowrap items-center gap-3 w-full md:w-auto">
           <div className="relative w-full md:w-96">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-4 w-4 text-slate-400" />
+              <Search className="h-4 w-4 text-gray-500" />
             </div>
             <input
               type="text"
               placeholder="Buscar por SKU, EAN o Nombre..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 w-full h-10 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors shadow-sm"
+              className="pl-10 w-full h-10 rounded-lg border border-[#1f1f1f] bg-[#121212] px-3 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-neutral-600 transition-colors"
             />
           </div>
 
@@ -191,7 +200,7 @@ export default function CatalogoPage() {
               setFamiliaFilter(e.target.value);
               setSubFamiliaFilter(''); // Reset dependent state
             }}
-            className="h-10 px-3 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm cursor-pointer"
+            className="h-10 px-3 bg-white border border-[#1f1f1f] rounded-lg text-sm font-medium text-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm cursor-pointer"
           >
             <option value="">Todas las Familias</option>
             {familias.map(f => <option key={f} value={f}>{f}</option>)}
@@ -200,7 +209,7 @@ export default function CatalogoPage() {
           <select 
             value={subFamiliaFilter}
             onChange={(e) => setSubFamiliaFilter(e.target.value)}
-            className="h-10 px-3 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm cursor-pointer"
+            className="h-10 px-3 bg-white border border-[#1f1f1f] rounded-lg text-sm font-medium text-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm cursor-pointer"
           >
             <option value="">Todas las Sub Familias</option>
             {subFamilias.map(sf => <option key={sf} value={sf}>{sf}</option>)}
@@ -209,7 +218,7 @@ export default function CatalogoPage() {
           <select 
             value={stockFilter}
             onChange={(e) => setStockFilter(e.target.value)}
-            className="h-10 px-3 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm cursor-pointer"
+            className="h-10 px-3 bg-white border border-[#1f1f1f] rounded-lg text-sm font-medium text-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm cursor-pointer"
           >
             <option value="">Todo el Stock</option>
             <option value="con_stock">Con Stock</option>
@@ -219,7 +228,7 @@ export default function CatalogoPage() {
 
         <button 
           onClick={handleOpenCreateModal}
-          className="flex items-center gap-2 h-10 px-5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 hover:shadow-md hover:-translate-y-0.5 transition-all w-full md:w-auto justify-center shadow-sm"
+          className="flex items-center gap-2 h-10 px-5 bg-white text-black rounded-lg text-sm font-semibold hover:bg-neutral-200 transition-colors w-full md:w-auto justify-center"
         >
           <Plus className="h-4 w-4" />
           Nuevo Producto
@@ -231,17 +240,17 @@ export default function CatalogoPage() {
         isLoading={isLoading} 
       />
 
-      <div className="flex items-center justify-between border-t border-slate-200 pt-4 mt-6">
-        <p className="text-sm text-slate-500 font-medium">
-          Mostrando <span className="text-slate-900 font-semibold">{filteredProducts.length > 0 ? 1 : 0}-{filteredProducts.length > 50 ? 50 : filteredProducts.length}</span> de <span className="text-slate-900 font-semibold">{products.length}</span> productos
+      <div className="flex items-center justify-between border-t border-[#1f1f1f] pt-4 mt-6">
+        <p className="text-sm text-gray-400 font-medium">
+          Mostrando <span className="text-white font-semibold">{filteredProducts.length > 0 ? 1 : 0}-{filteredProducts.length > 50 ? 50 : filteredProducts.length}</span> de <span className="text-white font-semibold">{products.length}</span> productos
         </p>
         
         <div className="flex items-center gap-2">
-          <button className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-slate-500 bg-white border border-slate-200 rounded-md hover:bg-slate-50 hover:text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" disabled>
+          <button className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-400 bg-white border border-[#1f1f1f] rounded-md hover:bg-[#121212] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors" disabled>
             <ChevronLeft className="h-4 w-4" />
             Anterior
           </button>
-          <button className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-md hover:bg-slate-50 hover:text-slate-900 transition-colors disabled:opacity-50" disabled={filteredProducts.length <= 50}>
+          <button className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-300 bg-white border border-[#1f1f1f] rounded-md hover:bg-[#121212] hover:text-white transition-colors disabled:opacity-50" disabled={filteredProducts.length <= 50}>
             Siguiente
             <ChevronRight className="h-4 w-4" />
           </button>
@@ -257,7 +266,7 @@ export default function CatalogoPage() {
                 <Plus size={18} className="text-indigo-500" />
                 Nuevo Producto
               </h2>
-              <button onClick={() => setIsModalOpen(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-md hover:bg-slate-100 transition-colors">
+              <button onClick={handleCloseModal} className="p-1 text-slate-400 hover:text-gray-300 rounded-md hover:bg-slate-100 transition-colors">
                 <X size={20} />
               </button>
             </div>
@@ -298,13 +307,13 @@ export default function CatalogoPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+              <div className="grid grid-cols-2 gap-4 p-4 bg-[#121212] border border-[#1f1f1f] rounded-xl">
                 <div className="space-y-1.5 col-span-2">
                   <Label className="text-slate-700 font-semibold text-sm">Familia Global</Label>
                   <select
                     value={formData.familia || ''}
                     onChange={(e) => setFormData({ ...formData, familia: e.target.value })}
-                    className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
+                    className="flex h-10 w-full rounded-md border border-[#1f1f1f] bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
                   >
                     <option value="" disabled>Seleccione familia...</option>
                     <option value="Abarrotes">Abarrotes</option>
@@ -347,11 +356,11 @@ export default function CatalogoPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50">
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-[#121212]">
               <button
-                onClick={() => setIsModalOpen(false)}
+                onClick={handleCloseModal}
                 disabled={isSaving}
-                className="px-4 py-2.5 text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 hover:text-slate-900 rounded-lg text-sm font-medium transition-colors shadow-sm"
+                className="px-4 py-2.5 text-gray-300 bg-white border border-[#1f1f1f] hover:bg-[#121212] hover:text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
               >
                 Cancelar
               </button>

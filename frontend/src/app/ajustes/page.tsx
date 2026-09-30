@@ -70,55 +70,54 @@ export default function AjustesBodegaPage() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-300">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-            <PackageMinus className="text-amber-600" /> Ajustes de Inventario
+          <h1 className="text-3xl font-medium tracking-tight text-white mb-1">Ajustes de Inventario
           </h1>
-          <p className="text-slate-500 text-sm mt-1">Gestione mermas y faltantes de los pallets recién recibidos.</p>
+          <p className="text-gray-500 text-sm tracking-wide mb-8">Gestione mermas y faltantes de los pallets recién recibidos.</p>
         </div>
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" size={18} />
           <input 
             type="text" 
             placeholder="Buscar por SKU, nombre o LPN..." 
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-10 pr-4 py-2 w-full md:w-72 border border-slate-300 rounded-lg focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-shadow text-sm"
+            className="pl-10 pr-4 py-2 w-full md:w-72 bg-[#121212] border border-[#1f1f1f] text-gray-200 placeholder:text-gray-500 rounded-lg focus:outline-none focus:border-neutral-600  transition-shadow text-sm"
           />
         </div>
       </div>
 
       {/* Tabla */}
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-[#121212] border border-[#1f1f1f] rounded-xl  overflow-hidden">
         {isLoading ? (
-          <div className="h-64 flex flex-col items-center justify-center text-slate-400 gap-2">
+          <div className="h-64 flex flex-col items-center justify-center text-gray-600 gap-2">
             <Loader2 className="animate-spin text-amber-500" size={24} />
             <span className="text-sm font-medium">Cargando inventario disponible...</span>
           </div>
         ) : satos.length === 0 ? (
-          <div className="h-64 flex flex-col items-center justify-center text-slate-400 gap-3">
+          <div className="h-64 flex flex-col items-center justify-center text-gray-600 gap-3">
             <CheckCircle2 size={32} className="text-emerald-400" />
-            <p className="text-sm font-medium text-slate-600">No hay productos pendientes en la zona de recepción.</p>
+            <p className="text-sm font-medium text-gray-400">No hay productos pendientes en la zona de recepción.</p>
           </div>
         ) : (
           <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
+            <thead className="bg-[#121212]/50 border-b border-[#1f1f1f]">
               <tr>
-                <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase">SKU / Producto</th>
-                <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase">LPN Contenedor</th>
-                <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase">Stock Actual</th>
-                <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase text-right">Acción</th>
+                <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase">SKU / Producto</th>
+                <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase">LPN Contenedor</th>
+                <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Stock Actual</th>
+                <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase text-right">Acción</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-neutral-800/30">
               {filteredSatos.map(sato => (
-                <tr key={sato.sato_id} className="hover:bg-amber-50/30 transition-colors">
+                <tr key={sato.sato_id} className="hover:bg-[#121212]/50 transition-colors">
                   <td className="px-5 py-4">
-                    <div className="font-mono text-xs text-slate-500 mb-0.5">{sato.sku}</div>
-                    <div className="font-semibold text-slate-800">{sato.nombre_producto}</div>
+                    <div className="font-mono text-xs text-gray-500 mb-0.5">{sato.sku}</div>
+                    <div className="font-semibold text-gray-200">{sato.nombre_producto}</div>
                   </td>
                   <td className="px-5 py-4">
                     {sato.lpn_padre ? (
@@ -126,19 +125,19 @@ export default function AjustesBodegaPage() {
                         <Box size={14} /> {sato.lpn_padre}
                       </span>
                     ) : (
-                      <span className="text-slate-400 text-xs italic">Sin pallet</span>
+                      <span className="text-gray-600 text-xs italic">Sin pallet</span>
                     )}
                   </td>
                   <td className="px-5 py-4">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg font-bold text-slate-800">{sato.cantidad_actual}</span>
-                      <span className="text-xs text-slate-500 uppercase font-medium">un</span>
+                    <div className="">
+                      <span className="text-lg font-bold text-gray-200">{sato.cantidad_actual}</span>
+                      <span className="text-xs text-gray-500 uppercase font-medium">un</span>
                     </div>
                   </td>
                   <td className="px-5 py-4 text-right">
                     <button 
                       onClick={() => handleOpenModal(sato)}
-                      className="px-3.5 py-1.5 bg-white border border-slate-300 text-slate-700 hover:text-amber-700 hover:border-amber-400 hover:bg-amber-50 rounded-lg font-semibold transition-colors shadow-sm text-xs"
+                      className="px-3.5 py-1.5 bg-[#121212] border border-[#1f1f1f] text-gray-300 hover:text-amber-700 hover:border-amber-400 hover:bg-amber-50 rounded-lg font-semibold transition-colors  text-xs"
                     >
                       Reportar Faltante
                     </button>
@@ -147,7 +146,7 @@ export default function AjustesBodegaPage() {
               ))}
               {filteredSatos.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-5 py-12 text-center text-slate-500 text-sm">
+                  <td colSpan={4} className="px-5 py-12 text-center text-gray-500 text-sm">
                     No se encontraron productos que coincidan con la búsqueda.
                   </td>
                 </tr>
@@ -159,9 +158,9 @@ export default function AjustesBodegaPage() {
 
       {/* Modal Ajuste */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md bg-[#121212] border-[#1f1f1f] text-gray-200">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-slate-800">
+            <DialogTitle className=" text-gray-200">
               <PackageMinus className="text-amber-600" size={20} />
               Ajuste de Inventario
             </DialogTitle>
@@ -169,12 +168,12 @@ export default function AjustesBodegaPage() {
           
           {selectedSato && (
             <div className="space-y-4 py-3">
-              <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 mb-2">
-                <p className="text-xs text-slate-500 font-mono mb-1">{selectedSato.sku}</p>
-                <p className="font-semibold text-slate-800 text-sm">{selectedSato.nombre_producto}</p>
-                <div className="flex justify-between items-center mt-2 border-t border-slate-200 pt-2">
-                  <span className="text-xs text-slate-500">Stock Actual (Físico)</span>
-                  <span className="font-bold text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200">{selectedSato.cantidad_actual}</span>
+              <div className="bg-[#0a0a0a] p-3 rounded-lg border border-[#1f1f1f]/50 mb-2">
+                <p className="text-xs text-gray-500 font-mono mb-1">{selectedSato.sku}</p>
+                <p className="font-semibold text-gray-200 text-sm">{selectedSato.nombre_producto}</p>
+                <div className="flex justify-between items-center mt-2 border-t border-[#1f1f1f] pt-2">
+                  <span className="text-xs text-gray-500">Stock Actual (Físico)</span>
+                  <span className="font-bold text-gray-200 bg-[#121212] px-2 py-0.5 rounded border border-[#1f1f1f]">{selectedSato.cantidad_actual}</span>
                 </div>
               </div>
 
@@ -187,7 +186,7 @@ export default function AjustesBodegaPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label className="text-slate-700 text-sm font-semibold">Cantidad Faltante</Label>
+                  <Label className="text-gray-300 text-sm font-semibold">Cantidad Faltante</Label>
                   <div className="relative">
                     <Input 
                       type="number"
@@ -195,18 +194,18 @@ export default function AjustesBodegaPage() {
                       max={selectedSato.cantidad_actual}
                       value={cantidadRestar}
                       onChange={(e) => setCantidadRestar(e.target.value ? Number(e.target.value) : "")}
-                      className="text-lg font-bold pr-10 border-slate-300 focus:border-amber-500 focus:ring-amber-500"
+                      className="text-lg font-bold pr-10 border-[#1f1f1f] focus:border-neutral-600 "
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium">un</span>
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 text-sm font-medium">un</span>
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-slate-700 text-sm font-semibold">Motivo</Label>
+                  <Label className="text-gray-300 text-sm font-semibold">Motivo</Label>
                   <select 
                     value={motivo}
                     onChange={(e: any) => setMotivo(e.target.value)}
-                    className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    className="flex h-10 w-full rounded-md border border-[#1f1f1f] px-3 py-2 text-sm focus:outline-none  focus:border-neutral-600"
                   >
                     <option value="Faltante de Origen">Faltante de Origen</option>
                     <option value="Rotura">Rotura / Daño</option>
@@ -222,14 +221,14 @@ export default function AjustesBodegaPage() {
             <button
               onClick={() => setIsModalOpen(false)}
               disabled={isSubmitting}
-              className="px-4 py-2 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg text-sm font-semibold transition-colors"
+              className="px-4 py-2 bg-[#121212] border border-[#1f1f1f] text-gray-300 hover:bg-[#0a0a0a] rounded-lg text-sm font-semibold transition-colors"
             >
               Cancelar
             </button>
             <button
               onClick={handleAjustar}
               disabled={isSubmitting}
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-semibold transition-all shadow-sm hover:shadow-md disabled:opacity-70 flex items-center gap-2"
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-semibold transition-all  hover:shadow-md disabled:opacity-70 "
             >
               {isSubmitting ? (
                 <><Loader2 size={16} className="animate-spin" /> Procesando...</>

@@ -84,8 +84,9 @@ def checkout_service(db: Session, items: list):
                 Patente.tipo_ubicacion == "SALA_VENTA",
                 Sato.cantidad > 0
             ).order_by(
-                Sato.fecha_vencimiento.asc()
-            ).with_for_update(skip_locked=True).all()
+                Sato.fecha_vencimiento.asc(),
+                Sato.sato_id.asc()  # Ordenamiento determinista dual para prevenir deadlocks
+            ).with_for_update().all()
 
             for sato in satos_fefo:
                 if restante_por_descontar <= 0:

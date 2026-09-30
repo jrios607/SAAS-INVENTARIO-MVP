@@ -8,7 +8,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Panel Admin | SG BVC",
+  title: "Panel Admin | BVCore",
   description: "Sistema de Gestión Bodega, Vitrina y Caja",
 };
 

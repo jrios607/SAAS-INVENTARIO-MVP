@@ -249,34 +249,33 @@ export default function RecepcionBodegaPage() {
   return (
     <div className="max-w-3xl mx-auto py-8 px-4">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-2">
-          <Package className="text-indigo-600" /> Recepción de Bodega
+        <h1 className="text-3xl font-medium tracking-tight text-white mb-1">Recepción de Bodega
         </h1>
-        <p className="text-slate-500 mt-1">Escanee la etiqueta del pallet o producto para registrar su ingreso.</p>
+        <p className="text-gray-500 text-sm tracking-wide mb-8">Escanee la etiqueta del pallet o producto para registrar su ingreso.</p>
       </div>
 
       {errorMsg && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm font-medium flex items-center gap-2 animate-in fade-in zoom-in-95 duration-200">
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm font-medium  animate-in fade-in zoom-in-95 duration-200">
            <AlertCircle size={18} /> {errorMsg}
         </div>
       )}
 
       {successMsg && (
-        <div className="mb-4 p-4 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-sm font-medium flex items-center gap-2 animate-in fade-in zoom-in-95 duration-200">
+        <div className="mb-4 p-4 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-sm font-medium  animate-in fade-in zoom-in-95 duration-200">
           <CheckCircle2 size={18} /> {successMsg}
         </div>
       )}
 
       {!parsedResult ? (
-        <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 flex flex-col items-center justify-center text-center">
+        <div className="bg-[#121212] p-8 rounded-2xl  border border-[#1f1f1f] flex flex-col items-center justify-center text-center">
           
           {isCameraOpen ? (
             <div className="w-full max-w-lg mb-6 animate-in fade-in zoom-in-95 duration-200">
               <div className="flex justify-between items-center mb-3">
-                 <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                 <h2 className="text-lg font-semibold text-gray-200 ">
                     <Camera size={20} className="text-indigo-600"/> Escáner de Cámara Activo
                  </h2>
-                 <button onClick={() => setIsCameraOpen(false)} className="text-slate-400 hover:text-slate-600 bg-slate-100 p-2 rounded-full transition-colors">
+                 <button onClick={() => setIsCameraOpen(false)} className="text-gray-600 hover:text-gray-400 bg-slate-100 p-2 rounded-full transition-colors">
                     <X size={20} />
                  </button>
               </div>
@@ -287,7 +286,7 @@ export default function RecepcionBodegaPage() {
                   <select 
                     value={selectedDeviceId}
                     onChange={(e) => setSelectedDeviceId(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 text-slate-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2.5"
+                    className="w-full bg-[#0a0a0a] border border-[#1f1f1f] text-gray-300 text-sm rounded-lg  focus:border-neutral-600 block p-2.5"
                   >
                     {videoDevices.map((device, idx) => (
                       <option key={device.deviceId} value={device.deviceId}>
@@ -339,7 +338,7 @@ export default function RecepcionBodegaPage() {
                   components={{ finder: false }}
                 />
               </div>
-              <p className="text-sm text-slate-500 mt-4 animate-pulse font-medium">
+              <p className="text-sm text-gray-500 mt-4 animate-pulse font-medium">
                 {cameraFeedback ? (
                   <span className="text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">{cameraFeedback}</span>
                 ) : (
@@ -352,8 +351,8 @@ export default function RecepcionBodegaPage() {
               <div className="w-20 h-20 bg-indigo-50 text-indigo-500 rounded-full flex items-center justify-center mb-6">
                 <ScanBarcode size={40} />
               </div>
-              <h2 className="text-xl font-semibold text-slate-800 mb-2">Esperando lectura...</h2>
-              <p className="text-slate-500 text-sm mb-8 max-w-md">
+              <h2 className="text-xl font-semibold text-gray-200 mb-2">Esperando lectura...</h2>
+              <p className="text-gray-500 text-sm mb-8 max-w-md">
                 Utilice la pistola para escanear, o abra la cámara del dispositivo móvil.
               </p>
               
@@ -363,7 +362,7 @@ export default function RecepcionBodegaPage() {
                 value={scanInput}
                 onChange={(e) => setScanInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="w-full max-w-lg h-14 px-6 text-lg border-2 border-slate-300 rounded-xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 outline-none transition-all text-center tracking-wider font-mono shadow-inner mb-6"
+                className="w-full max-w-lg h-14 px-6 text-lg border-2 border-[#1f1f1f] rounded-xl focus:border-neutral-600 focus:ring-4 /20 outline-none transition-all text-center tracking-wider font-mono shadow-inner mb-6"
                 placeholder="Escaneo manual o pistola..."
                 autoFocus
               />
@@ -378,71 +377,71 @@ export default function RecepcionBodegaPage() {
           )}
         </div>
       ) : parsedResult.type === "GS1" ? (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <div className="bg-slate-50 border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+        <div className="bg-[#121212] rounded-2xl  border border-[#1f1f1f] overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="bg-[#121212]/50 border-b border-[#1f1f1f] px-6 py-4 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-200 ">
               <CheckCircle2 className="text-emerald-500" size={20} /> Producto Directo (GS1-128)
             </h2>
           </div>
 
           <div className="px-6 py-4 bg-slate-900 flex flex-col gap-1">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Código Crudo Leído por Cámara:</span>
+            <span className="text-[11px] font-bold text-gray-600 uppercase tracking-widest">Código Crudo Leído por Cámara:</span>
             <code className="font-mono text-[15px] text-emerald-400 break-all">{parsedResult.original}</code>
           </div>
 
           <div className="p-6">
-            <p className="text-sm text-slate-500 mb-6 font-medium">Fase 2: Validación Humana. Edite los campos si la lectura automática falló.</p>
+            <p className="text-sm text-gray-500 mb-6 font-medium">Fase 2: Validación Humana. Edite los campos si la lectura automática falló.</p>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-1.5">
-                <label className="text-sm font-bold text-slate-700">EAN / GTIN</label>
+                <label className="text-sm font-bold text-gray-300">EAN / GTIN</label>
                 <input
                   type="text"
                   value={parsedResult.data.ean}
                   onChange={(e) => setParsedResult({ ...parsedResult, data: { ...parsedResult.data, ean: e.target.value } })}
-                  className="w-full h-11 px-3 border border-slate-300 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-mono text-sm bg-slate-50"
+                  className="w-full h-11 px-3 bg-[#121212] border border-[#1f1f1f] text-gray-200 placeholder:text-gray-500 rounded-lg focus:border-neutral-600  outline-none font-mono text-sm bg-[#0a0a0a]"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-sm font-bold text-slate-700">Lote</label>
+                <label className="text-sm font-bold text-gray-300">Lote</label>
                 <input
                   type="text"
                   value={parsedResult.data.lote}
                   onChange={(e) => setParsedResult({ ...parsedResult, data: { ...parsedResult.data, lote: e.target.value } })}
-                  className="w-full h-11 px-3 border border-slate-300 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-mono text-sm uppercase bg-slate-50"
+                  className="w-full h-11 px-3 bg-[#121212] border border-[#1f1f1f] text-gray-200 placeholder:text-gray-500 rounded-lg focus:border-neutral-600  outline-none font-mono text-sm uppercase bg-[#0a0a0a]"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-sm font-bold text-slate-700">Vencimiento</label>
+                <label className="text-sm font-bold text-gray-300">Vencimiento</label>
                 <input
                   type="date"
                   value={parsedResult.data.vencimiento}
                   onChange={(e) => setParsedResult({ ...parsedResult, data: { ...parsedResult.data, vencimiento: e.target.value } })}
-                  className="w-full h-11 px-3 border border-slate-300 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none bg-slate-50"
+                  className="w-full h-11 px-3 bg-[#121212] border border-[#1f1f1f] text-gray-200 placeholder:text-gray-500 rounded-lg focus:border-neutral-600  outline-none bg-[#0a0a0a]"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-sm font-bold text-slate-700">Peso (Kg)</label>
+                <label className="text-sm font-bold text-gray-300">Peso (Kg)</label>
                 <input
                   type="number"
                   step="0.01"
                   value={parsedResult.data.peso}
                   onChange={(e) => setParsedResult({ ...parsedResult, data: { ...parsedResult.data, peso: e.target.value } })}
-                  className="w-full h-11 px-3 border border-slate-300 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-mono text-sm bg-slate-50"
+                  className="w-full h-11 px-3 bg-[#121212] border border-[#1f1f1f] text-gray-200 placeholder:text-gray-500 rounded-lg focus:border-neutral-600  outline-none font-mono text-sm bg-[#0a0a0a]"
                 />
               </div>
 
               <div className="space-y-1.5 md:col-span-2">
-                <label className="text-sm font-bold text-slate-700 flex items-center gap-1">
+                <label className="text-sm font-bold text-gray-300 flex items-center gap-1">
                   Zona de Bodega Destino (Opcional)
                 </label>
                 <select
                   value={parsedResult.data.ubicacion_id}
                   onChange={(e) => setParsedResult({ ...parsedResult, data: { ...parsedResult.data, ubicacion_id: e.target.value } })}
-                  className="w-full h-11 px-4 border border-slate-300 bg-slate-50 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-mono text-sm cursor-pointer"
+                  className="w-full h-11 px-4 border border-[#1f1f1f] bg-[#0a0a0a] rounded-lg focus:border-neutral-600  outline-none font-mono text-sm cursor-pointer"
                 >
                   <option value="">-- Dejar en "Bodega Recepción" --</option>
                   {zonasBodega.map(z => (
@@ -454,10 +453,10 @@ export default function RecepcionBodegaPage() {
               </div>
             </div>
 
-            <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col-reverse sm:flex-row justify-end gap-3">
+            <div className="mt-8 pt-6 border-t border-[#1f1f1f]/50 flex flex-col-reverse sm:flex-row justify-end gap-3">
               <button
                 onClick={handleReset}
-                className="w-full sm:w-auto px-6 py-3 rounded-xl border border-slate-300 bg-slate-100 text-slate-700 font-bold hover:bg-slate-200 transition-colors"
+                className="w-full sm:w-auto px-6 py-3 rounded-xl border border-[#1f1f1f] bg-slate-100 text-gray-300 font-bold hover:bg-slate-200 transition-colors"
                 disabled={isSubmitting}
               >
                 Cancelar / Volver a escanear
@@ -474,41 +473,41 @@ export default function RecepcionBodegaPage() {
           </div>
         </div>
       ) : (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
+        <div className="bg-[#121212] rounded-2xl  border border-[#1f1f1f] overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
           <div className="bg-indigo-50 border-b border-indigo-100 px-6 py-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-indigo-800 flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-indigo-800 ">
               <Box className="text-indigo-600" size={20} /> Pallet Consolidado (LPN)
             </h2>
           </div>
 
           <div className="px-6 py-4 bg-slate-900 flex flex-col gap-1">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Código Crudo Leído por Cámara:</span>
+            <span className="text-[11px] font-bold text-gray-600 uppercase tracking-widest">Código Crudo Leído por Cámara:</span>
             <code className="font-mono text-[15px] text-emerald-400 break-all">{parsedResult.original}</code>
           </div>
 
           <div className="p-6">
-            <p className="text-sm text-slate-500 mb-6 font-medium">Fase 2: Validación Humana. Por favor seleccione el destino y tipo si faltan datos.</p>
+            <p className="text-sm text-gray-500 mb-6 font-medium">Fase 2: Validación Humana. Por favor seleccione el destino y tipo si faltan datos.</p>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="space-y-1.5 md:col-span-2">
-                <label className="text-sm font-bold text-slate-700">LPN (Handling Unit)</label>
+                <label className="text-sm font-bold text-gray-300">LPN (Handling Unit)</label>
                 <input
                   type="text"
                   value={parsedResult.data.lpn}
                   onChange={(e) => setParsedResult({ ...parsedResult, data: { ...parsedResult.data, lpn: e.target.value } })}
-                  className="w-full h-12 px-4 border-2 border-slate-300 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-mono text-lg text-indigo-700 font-bold bg-slate-50"
+                  className="w-full h-12 px-4 border-2 border-[#1f1f1f] rounded-lg focus:border-neutral-600  outline-none font-mono text-lg text-indigo-700 font-bold bg-[#0a0a0a]"
                   readOnly
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-sm font-bold text-slate-700 flex items-center gap-1">
+                <label className="text-sm font-bold text-gray-300 flex items-center gap-1">
                   Destino <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={parsedResult.data.destino}
                   onChange={(e) => setParsedResult({ ...parsedResult, data: { ...parsedResult.data, destino: e.target.value } })}
-                  className={`w-full h-12 px-4 border ${!parsedResult.data.destino ? 'border-amber-400 bg-amber-50' : 'border-slate-300 bg-slate-50'} rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-mono text-base font-semibold cursor-pointer`}
+                  className={`w-full h-12 px-4 border ${!parsedResult.data.destino ? 'border-amber-400 bg-amber-50' : 'border-[#1f1f1f] bg-[#0a0a0a]'} rounded-lg focus:border-neutral-600  outline-none font-mono text-base font-semibold cursor-pointer`}
                 >
                   <option value="" disabled>-- Seleccione --</option>
                   <option value="3513">3513 - S10 San Joaquín</option>
@@ -521,13 +520,13 @@ export default function RecepcionBodegaPage() {
               </div>
 
               <div className="space-y-1.5 md:col-span-3">
-                <label className="text-sm font-bold text-slate-700 flex items-center gap-1">
+                <label className="text-sm font-bold text-gray-300 flex items-center gap-1">
                   Tipo de Carga <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={parsedResult.data.tipo_carga}
                   onChange={(e) => setParsedResult({ ...parsedResult, data: { ...parsedResult.data, tipo_carga: e.target.value } })}
-                  className={`w-full h-11 px-4 border ${!parsedResult.data.tipo_carga ? 'border-amber-400 bg-amber-50' : 'border-slate-300 bg-slate-50'} rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-mono text-sm font-semibold cursor-pointer`}
+                  className={`w-full h-11 px-4 border ${!parsedResult.data.tipo_carga ? 'border-amber-400 bg-amber-50' : 'border-[#1f1f1f] bg-[#0a0a0a]'} rounded-lg focus:border-neutral-600  outline-none font-mono text-sm font-semibold cursor-pointer`}
                 >
                   <option value="" disabled>-- Seleccione Tipo --</option>
                   <option value="SECO">SECO</option>
@@ -540,13 +539,13 @@ export default function RecepcionBodegaPage() {
               </div>
 
               <div className="space-y-1.5 md:col-span-3">
-                <label className="text-sm font-bold text-slate-700 flex items-center gap-1">
+                <label className="text-sm font-bold text-gray-300 flex items-center gap-1">
                   Zona de Bodega Destino (Opcional)
                 </label>
                 <select
                   value={parsedResult.data.ubicacion_id}
                   onChange={(e) => setParsedResult({ ...parsedResult, data: { ...parsedResult.data, ubicacion_id: e.target.value } })}
-                  className="w-full h-11 px-4 border border-slate-300 bg-slate-50 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-mono text-sm cursor-pointer"
+                  className="w-full h-11 px-4 border border-[#1f1f1f] bg-[#0a0a0a] rounded-lg focus:border-neutral-600  outline-none font-mono text-sm cursor-pointer"
                 >
                   <option value="">-- Dejar en "Bodega Recepción" --</option>
                   {zonasBodega.map(z => (
@@ -558,10 +557,10 @@ export default function RecepcionBodegaPage() {
               </div>
             </div>
 
-            <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col-reverse sm:flex-row justify-end gap-3">
+            <div className="mt-8 pt-6 border-t border-[#1f1f1f]/50 flex flex-col-reverse sm:flex-row justify-end gap-3">
               <button
                 onClick={handleReset}
-                className="w-full sm:w-auto px-6 py-3 rounded-xl border border-slate-300 bg-slate-100 text-slate-700 font-bold hover:bg-slate-200 transition-colors"
+                className="w-full sm:w-auto px-6 py-3 rounded-xl border border-[#1f1f1f] bg-slate-100 text-gray-300 font-bold hover:bg-slate-200 transition-colors"
                 disabled={isSubmitting}
               >
                 Cancelar / Volver a escanear

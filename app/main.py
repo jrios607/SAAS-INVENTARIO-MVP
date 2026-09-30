@@ -14,6 +14,7 @@ from app.domains.auth.routers import auth, logs, auditoria
 from app.domains.integration.routers import integration, asn, outbound, trazabilidad
 from app.core.config import settings
 from app.core.logger import setup_logger
+from app.core.tenant import current_tenant_id
 import uuid
 import structlog
 
@@ -31,6 +32,16 @@ app = FastAPI(
     description="API Core para Gestión de Bodega, Vitrina y Mermas",
     version="1.0.0"
 )
+
+@app.middleware("http")
+async def tenant_middleware(request: Request, call_next):
+    # Extraemos tenant_id desde el header (MVP)
+    tenant_id = request.headers.get("X-Tenant-ID")
+    if not tenant_id:
+        tenant_id = settings.DEFAULT_TENANT_ID
+    current_tenant_id.set(tenant_id)
+    response = await call_next(request)
+    return response
 
 @app.middleware("http")
 async def add_request_id_middleware(request: Request, call_next):
@@ -51,7 +62,7 @@ app.add_middleware(
     allow_origin_regex=r"https://.*\.ngrok-free\.(app|dev)|https://.*\.ngrok\.(app|dev)|https://.*\.loca\.lt",
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "ngrok-skip-browser-warning", "Bypass-Tunnel-Reminder"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "ngrok-skip-browser-warning", "Bypass-Tunnel-Reminder", "X-Tenant-ID"],
 )
 
 # CRÍTICO-06: Global Exception Handler Seguro

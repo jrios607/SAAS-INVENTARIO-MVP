@@ -49,7 +49,7 @@ class StockAgrupadoFamilia(BaseModel):
 # ─── Bodega ─────────────────────────────────────────────────
 
 class PalletReceptionRequest(BaseModel):
-    barcode_text: str
+    barcode_text: str = Field(..., max_length=150, description="Lectura láser GS1-128")
     ubicacion_id: Optional[str] = None
 
 class PalletReceptionResponse(BaseModel):

@@ -4,10 +4,17 @@ const getApiUrl = () => {
 
 const API_URL = getApiUrl();
 
-const DEFAULT_HEADERS = {
-  "Content-Type": "application/json",
-  "Bypass-Tunnel-Reminder": "true",
-  "ngrok-skip-browser-warning": "true"
+const getHeaders = () => {
+  let tenantId = process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID || "130cc80b-1971-4332-bab3-9ee5ef66063b";
+  if (typeof window !== "undefined") {
+    tenantId = localStorage.getItem("tenant_id") || tenantId;
+  }
+  return {
+    "Content-Type": "application/json",
+    "Bypass-Tunnel-Reminder": "true",
+    "ngrok-skip-browser-warning": "true",
+    "X-Tenant-ID": tenantId
+  };
 };
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
@@ -91,7 +98,9 @@ export interface PalletReceptionResponse {
 // ─── DECORACIONES PLANO ──────────────────────────────────────────────────
 
 export async function getDecoraciones(): Promise<DecoracionPlano[]> {
-  const res = await fetch(`${API_URL}/patentes/decoraciones`);
+  const res = await fetch(`${API_URL}/patentes/decoraciones`, {
+    headers: getHeaders(),
+  });
   if (!res.ok) throw new Error("Error fetching decoraciones");
   return res.json();
 }
@@ -99,7 +108,7 @@ export async function getDecoraciones(): Promise<DecoracionPlano[]> {
 export async function createDecoracion(decoracion: DecoracionPlano): Promise<DecoracionPlano> {
   const res = await fetch(`${API_URL}/patentes/decoraciones`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getHeaders(),
     body: JSON.stringify(decoracion),
   });
   if (!res.ok) {
@@ -112,7 +121,7 @@ export async function createDecoracion(decoracion: DecoracionPlano): Promise<Dec
 export async function updateDecoracion(id: string, updates: Partial<DecoracionPlano>): Promise<DecoracionPlano> {
   const res = await fetch(`${API_URL}/patentes/decoraciones/${id}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: getHeaders(),
     body: JSON.stringify(updates),
   });
   if (!res.ok) {
@@ -125,6 +134,7 @@ export async function updateDecoracion(id: string, updates: Partial<DecoracionPl
 export async function deleteDecoracion(id: string): Promise<void> {
   const res = await fetch(`${API_URL}/patentes/decoraciones/${id}`, {
     method: "DELETE",
+    headers: getHeaders(),
   });
   if (!res.ok) {
     const data = await res.json();
@@ -137,7 +147,7 @@ export async function deleteDecoracion(id: string): Promise<void> {
 export async function getProductos(): Promise<Producto[]> {
   try {
     const res = await fetch(`${API_URL}/catalogo/productos`, {
-      headers: DEFAULT_HEADERS,
+      headers: getHeaders(),
       cache: "no-store",
     });
     if (!res.ok) throw new Error(res.statusText);
@@ -151,7 +161,7 @@ export async function getProductos(): Promise<Producto[]> {
 export async function getStockAgrupado(): Promise<StockAgrupadoFamilia[]> {
   try {
     const res = await fetch(`${API_URL}/catalogo/stock-agrupado`, {
-      headers: DEFAULT_HEADERS,
+      headers: getHeaders(),
       cache: "no-store",
     });
     if (!res.ok) throw new Error(res.statusText);
@@ -167,7 +177,7 @@ export async function createProducto(
 ): Promise<{ mensaje: string; sku: string }> {
   const res = await fetch(`${API_URL}/catalogo/producto`, {
     method: "POST",
-    headers: DEFAULT_HEADERS,
+    headers: getHeaders(),
     body: JSON.stringify(producto),
   });
   if (!res.ok) {
@@ -182,7 +192,7 @@ export async function createProducto(
 export async function getPatentes(): Promise<Patente[]> {
   try {
     const res = await fetch(`${API_URL}/patentes/`, {
-      headers: DEFAULT_HEADERS,
+      headers: getHeaders(),
       cache: "no-store",
     });
     if (!res.ok) throw new Error(res.statusText);
@@ -196,7 +206,7 @@ export async function getPatentes(): Promise<Patente[]> {
 export async function createPatente(patente: Patente): Promise<Patente> {
   const res = await fetch(`${API_URL}/patentes/`, {
     method: "POST",
-    headers: DEFAULT_HEADERS,
+    headers: getHeaders(),
     body: JSON.stringify(patente),
   });
   if (!res.ok) {
@@ -212,7 +222,7 @@ export async function updatePatente(
 ): Promise<Patente> {
   const res = await fetch(`${API_URL}/patentes/${encodeURIComponent(id_patente)}`, {
     method: "PUT",
-    headers: DEFAULT_HEADERS,
+    headers: getHeaders(),
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
@@ -225,7 +235,7 @@ export async function updatePatente(
 export async function getStockPatente(id_patente: string): Promise<StockItem[]> {
   try {
     const res = await fetch(`${API_URL}/patentes/${encodeURIComponent(id_patente)}/stock`, {
-      headers: DEFAULT_HEADERS,
+      headers: getHeaders(),
       cache: "no-store",
     });
     if (!res.ok) throw new Error(res.statusText);
@@ -239,7 +249,7 @@ export async function getStockPatente(id_patente: string): Promise<StockItem[]> 
 export async function getPatenteCompliance(id_patente: string): Promise<ComplianceResponse | null> {
   try {
     const res = await fetch(`${API_URL}/patentes/${encodeURIComponent(id_patente)}/compliance`, {
-      headers: DEFAULT_HEADERS,
+      headers: getHeaders(),
       cache: "no-store",
     });
     if (!res.ok) throw new Error(res.statusText);
@@ -255,7 +265,7 @@ export async function getPatenteCompliance(id_patente: string): Promise<Complian
 export async function recepcionarPallet(barcode_text: string, ubicacion_id?: string): Promise<PalletReceptionResponse> {
   const res = await fetch(`${API_URL}/bodega/recepcion/pallet`, {
     method: "POST",
-    headers: DEFAULT_HEADERS,
+    headers: getHeaders(),
     body: JSON.stringify({ barcode_text, ubicacion_id }),
   });
   if (!res.ok) {
@@ -279,7 +289,7 @@ export interface LpnReceptionResponse {
 export async function recepcionarLpn(lpn_data: { destino: string, lpn: string, tipo_carga: string, original_barcode: string, ubicacion_id?: string }): Promise<LpnReceptionResponse> {
   const res = await fetch(`${API_URL}/bodega/recepcion/lpn`, {
     method: "POST",
-    headers: DEFAULT_HEADERS,
+    headers: getHeaders(),
     body: JSON.stringify(lpn_data),
   });
   if (!res.ok) {
@@ -298,7 +308,7 @@ export async function recepcionarLpn(lpn_data: { destino: string, lpn: string, t
 export async function deletePatente(id_patente: string): Promise<void> {
   const res = await fetch(`${API_URL}/patentes/${encodeURIComponent(id_patente)}`, {
     method: "DELETE",
-    headers: DEFAULT_HEADERS,
+    headers: getHeaders(),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -318,7 +328,7 @@ export interface SatoDisponible {
 export async function getSatosDisponibles(): Promise<SatoDisponible[]> {
   try {
     const res = await fetch(`${API_URL}/bodega/satos/disponibles`, {
-      headers: DEFAULT_HEADERS,
+      headers: getHeaders(),
       cache: "no-store",
     });
     if (!res.ok) throw new Error(res.statusText);
@@ -332,7 +342,7 @@ export async function getSatosDisponibles(): Promise<SatoDisponible[]> {
 export async function moverSatoAVitrina(sato_id: string, id_patente: string, nivel_estante: number, frente_posicion: number): Promise<{ mensaje: string; sato_id: string; nueva_ubicacion: string }> {
   const res = await fetch(`${API_URL}/vitrina/${encodeURIComponent(sato_id)}/mover_a_vitrina`, {
     method: "PUT",
-    headers: DEFAULT_HEADERS,
+    headers: getHeaders(),
     body: JSON.stringify({ id_patente, nivel_estante, frente_posicion }),
   });
   if (!res.ok) {
@@ -361,7 +371,7 @@ export interface AjusteInventarioRequest {
 export async function getSatosRecepcion(): Promise<SatoRecepcionDetalle[]> {
   try {
     const res = await fetch(`${API_URL}/bodega/recepcion/satos`, {
-      headers: DEFAULT_HEADERS,
+      headers: getHeaders(),
       cache: "no-store",
     });
     if (!res.ok) throw new Error(res.statusText);
@@ -375,7 +385,7 @@ export async function getSatosRecepcion(): Promise<SatoRecepcionDetalle[]> {
 export async function ajustarInventario(sato_id: string, request: AjusteInventarioRequest): Promise<{ mensaje: string }> {
   const res = await fetch(`${API_URL}/bodega/satos/${encodeURIComponent(sato_id)}/ajuste`, {
     method: "POST",
-    headers: DEFAULT_HEADERS,
+    headers: getHeaders(),
     body: JSON.stringify(request),
   });
   if (!res.ok) {
@@ -388,7 +398,7 @@ export async function ajustarInventario(sato_id: string, request: AjusteInventar
 export async function getComplianceBatch(): Promise<Record<string, ComplianceResponse>> {
   try {
     const res = await fetch(`${API_URL}/patentes/batch/compliance`, {
-      headers: DEFAULT_HEADERS,
+      headers: getHeaders(),
       cache: "no-store",
     });
     if (!res.ok) throw new Error(res.statusText);
@@ -424,7 +434,7 @@ export interface OlaPickingResponse {
 export async function getTareasOla(ola_id: number): Promise<OlaPickingResponse | null> {
   try {
     const res = await fetch(`${API_URL}/outbound/waves/${ola_id}/tareas`, {
-      headers: DEFAULT_HEADERS,
+      headers: getHeaders(),
       cache: "no-store",
     });
     if (!res.ok) throw new Error(res.statusText);
@@ -438,7 +448,7 @@ export async function getTareasOla(ola_id: number): Promise<OlaPickingResponse |
 export async function completarTarea(tarea_id: number, ean_escaneado: string): Promise<{ mensaje: string; ola_completada: boolean }> {
   const res = await fetch(`${API_URL}/outbound/tareas/${tarea_id}/completar`, {
     method: "POST",
-    headers: DEFAULT_HEADERS,
+    headers: getHeaders(),
     body: JSON.stringify({ ean_escaneado }),
   });
   if (!res.ok) {
@@ -451,7 +461,7 @@ export async function completarTarea(tarea_id: number, ean_escaneado: string): P
 export async function reportarFaltanteTarea(tarea_id: number): Promise<{ mensaje: string }> {
   const res = await fetch(`${API_URL}/outbound/tareas/${tarea_id}/faltante`, {
     method: "POST",
-    headers: DEFAULT_HEADERS,
+    headers: getHeaders(),
   });
   if (!res.ok) {
     const errorData = await res.json().catch(() => null);
@@ -478,7 +488,7 @@ export interface DashboardKPIs {
 export async function getDashboardKPIs(): Promise<DashboardKPIs | null> {
   try {
     const res = await fetch(`${API_URL}/api/v1/dashboard/kpis`, {
-      headers: DEFAULT_HEADERS,
+      headers: getHeaders(),
       cache: "no-store",
     });
     if (!res.ok) throw new Error(res.statusText);
@@ -516,7 +526,7 @@ export interface BodegaStockSato {
 export async function getPatentesBodega(): Promise<BodegaPatente[]> {
   try {
     const res = await fetch(`${API_URL}/api/v1/mapa/bodega`, {
-      headers: DEFAULT_HEADERS,
+      headers: getHeaders(),
       cache: "no-store",
     });
     if (!res.ok) throw new Error(res.statusText);
@@ -530,7 +540,7 @@ export async function getPatentesBodega(): Promise<BodegaPatente[]> {
 export async function getStockBodegaZona(id_patente: string): Promise<BodegaStockSato[]> {
   try {
     const res = await fetch(`${API_URL}/api/v1/mapa/bodega/${encodeURIComponent(id_patente)}/stock`, {
-      headers: DEFAULT_HEADERS,
+      headers: getHeaders(),
       cache: "no-store",
     });
     if (!res.ok) throw new Error(res.statusText);
@@ -571,7 +581,7 @@ export interface PosCheckoutResponse {
 export async function posScan(data: PosScanRequest): Promise<PosScanResponse> {
   const response = await fetch(`${API_URL}/pos/scan`, {
     method: "POST",
-    headers: DEFAULT_HEADERS,
+    headers: getHeaders(),
     body: JSON.stringify(data),
   });
   if (!response.ok) {
@@ -584,7 +594,7 @@ export async function posScan(data: PosScanRequest): Promise<PosScanResponse> {
 export async function posCheckout(data: PosCheckoutRequest): Promise<PosCheckoutResponse> {
   const response = await fetch(`${API_URL}/pos/checkout`, {
     method: "POST",
-    headers: DEFAULT_HEADERS,
+    headers: getHeaders(),
     body: JSON.stringify(data),
   });
   if (!response.ok) {
@@ -614,7 +624,7 @@ export interface PosSyncResponse {
 export async function posSyncOffline(data: PosSyncRequest): Promise<PosSyncResponse> {
   const response = await fetch(`${API_URL}/pos/sync`, {
     method: "POST",
-    headers: DEFAULT_HEADERS,
+    headers: getHeaders(),
     body: JSON.stringify(data),
   });
   if (!response.ok) {

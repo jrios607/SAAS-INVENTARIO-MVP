@@ -41,9 +41,10 @@ IMPORTANTE — Limitación de RoutingSession:
 """
 
 import logging
-from sqlalchemy import create_engine, event, text
-from sqlalchemy.orm import sessionmaker, declarative_base, Session
+from sqlalchemy import create_engine, event, text, orm
+from sqlalchemy.orm import sessionmaker, declarative_base, Session, Mapper
 from app.core.config import settings
+from app.core.tenant import current_tenant_id
 
 logger = logging.getLogger("sg-wms.database")
 
@@ -178,6 +179,28 @@ SessionLocal = sessionmaker(
 
 # Base ORM
 Base = declarative_base()
+
+# ── Multi-Tenant Global Filters ───────────────────────────────────────────
+
+@event.listens_for(Session, "do_orm_execute")
+def _add_tenant_filter(execute_state):
+    tenant_id = current_tenant_id.get()
+    if tenant_id and execute_state.is_select and not execute_state.is_column_load and not execute_state.is_relationship_load:
+        execute_state.statement = execute_state.statement.options(
+            orm.with_loader_criteria(
+                Base,
+                lambda cls: cls.tenant_id == tenant_id if hasattr(cls, "tenant_id") else True,
+                include_aliases=True,
+                track_closure_variables=False
+            )
+        )
+
+@event.listens_for(Mapper, "before_insert")
+def _set_tenant_id(mapper, connection, target):
+    if hasattr(target, "tenant_id") and not target.tenant_id:
+        tenant = current_tenant_id.get()
+        if tenant:
+            target.tenant_id = tenant
 
 
 # ── Dependencias FastAPI ──────────────────────────────────────────────────

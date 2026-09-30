@@ -3,6 +3,12 @@ from datetime import datetime
 
 def parse_gs1_128(barcode: str) -> dict:
     parsed_data = {}
+    
+    # ── Sanitización: prevenir ReDoS y buffer overflow ──────────────
+    barcode = barcode.strip()
+    if len(barcode) > 150:
+        raise ValueError("Payload del código excede el largo máximo permitido (150 chars).")
+
     try:
         # (01) GTIN / EAN — 13 o 14 dígitos
         match_01 = re.search(r'\(?01\)?(\d{13,14})', barcode)
