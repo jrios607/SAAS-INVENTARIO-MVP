@@ -68,7 +68,7 @@ export default function RecepcionBodegaPage() {
   const [zonasBodega, setZonasBodega] = useState<BodegaPatente[]>([]);
   const [productosCatalogo, setProductosCatalogo] = useState<Producto[]>([]);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(true);
-  const [usesGs1Fefo, setUsesGs1Fefo] = useState<boolean>(true);
+  const [usesGs1Fefo, setUsesGs1Fefo] = useState<boolean>(false);
 
   const [cameraFeedback, setCameraFeedback] = useState("");
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
@@ -255,12 +255,19 @@ export default function RecepcionBodegaPage() {
     );
     if (matchedProd && !barcode.includes("(")) {
       const esCaja = matchedProd.dun14 === barcode;
+      const diasVida =
+        matchedProd.dias_vida_util && matchedProd.dias_vida_util > 0
+          ? matchedProd.dias_vida_util
+          : null;
+      const fechaCalculada = diasVida
+        ? new Date(Date.now() + diasVida * 86400000).toISOString().slice(0, 10)
+        : "";
       setParsedResult({
         type: "GS1",
         data: {
           ean: esCaja ? matchedProd.dun14 || barcode : matchedProd.ean,
           peso: "1.00",
-          vencimiento: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+          vencimiento: fechaCalculada,
           lote: `L-${new Date().toISOString().slice(2, 10).replace(/-/g, "")}`,
           ubicacion_id: "",
           modo_ingreso: esCaja ? "CAJAS" : "AUTO",

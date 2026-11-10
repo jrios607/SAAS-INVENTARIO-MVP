@@ -80,16 +80,15 @@ def calcular_modulos_por_perfil(
 
 def get_default_settings_dict() -> Dict[str, Any]:
     """
-    Configuración por defecto para locales que aún no han ejecutado el Wizard.
-    Mantiene todos los módulos operativos visibles (excepto `pos_express` demo)
-    y `fallback_to_warehouse_on_zero_shelf = False` (Modo Estricto Vitrina).
+    Configuración por defecto orientada a Minimarket para locales que aún no han ejecutado el Wizard.
+    Oculta módulos industriales pesados por defecto y conserva `fallback_to_warehouse_on_zero_shelf = False`.
     """
     return {
         "onboarding_completed": False,
         "business_profile": {
-            "scale": "supermercado",
-            "has_separate_warehouse_map": True,
-            "uses_gs1_128_fefo": True,
+            "scale": "minimarket",
+            "has_separate_warehouse_map": False,
+            "uses_gs1_128_fefo": False,
         },
         "pos_strategy": {
             "mode": "legacy_file_pos",
@@ -97,7 +96,7 @@ def get_default_settings_dict() -> Dict[str, Any]:
             "external_provider": None,
             "fallback_to_warehouse_on_zero_shelf": False,
         },
-        "enabled_modules": calcular_modulos_por_perfil("supermercado", "legacy_file_pos"),
+        "enabled_modules": calcular_modulos_por_perfil("minimarket", "legacy_file_pos"),
     }
 
 
@@ -107,9 +106,9 @@ def _normalizar_settings_dict(raw: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         return defaults
 
     bp_raw = raw.get("business_profile") if isinstance(raw.get("business_profile"), dict) else {}
-    scale = bp_raw.get("scale") if bp_raw.get("scale") in ("minimarket", "supermercado") else "supermercado"
+    scale = bp_raw.get("scale") if bp_raw.get("scale") in ("minimarket", "supermercado") else "minimarket"
     has_sep = bool(bp_raw.get("has_separate_warehouse_map", scale == "supermercado"))
-    uses_gs1 = bool(bp_raw.get("uses_gs1_128_fefo", True))
+    uses_gs1 = bool(bp_raw.get("uses_gs1_128_fefo", scale == "supermercado"))
 
     ps_raw = raw.get("pos_strategy") if isinstance(raw.get("pos_strategy"), dict) else {}
     mode = (

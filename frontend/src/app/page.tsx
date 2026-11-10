@@ -55,6 +55,10 @@ export default function CentroDeInformacionPage() {
   // Estado para consultar más detalles según el tipo de alerta
   const [selectedAlert, setSelectedAlert] = useState<AlertType | null>(null);
 
+  // Rutina de 10 Minutos: Conteo Cíclico Diario y Excepciones
+  const [conteosVerificados, setConteosVerificados] = useState<Record<string, boolean>>({});
+  const [mostrarRutina10Min, setMostrarRutina10Min] = useState<boolean>(true);
+
   // Controles de visualización del gráfico (2.1 Punto 3 + Selector Barras/Torta)
   const [chartPeriod, setChartPeriod] = useState<"6m" | "4w">("6m");
   const [chartType, setChartType] = useState<"barras" | "torta">("barras");
@@ -234,6 +238,17 @@ export default function CentroDeInformacionPage() {
       const min = p.stock_minimo ?? 5;
       return p.stock_individual <= min;
     });
+  }, [todosLosProductos]);
+
+  // Rutina de 10 Minutos: Top productos Clase A o de alto movimiento a verificar hoy
+  const itemsRutina10Min = useMemo<ProductoConFamilia[]>(() => {
+    const claseA = todosLosProductos.filter(
+      (p) => (p.clase_abc || "").toUpperCase() === "A"
+    );
+    if (claseA.length > 0) return claseA.slice(0, 4);
+    return [...todosLosProductos]
+      .sort((a, b) => b.stock_individual - a.stock_individual)
+      .slice(0, 4);
   }, [todosLosProductos]);
 
   // Lotes en riesgo FEFO (<= 7 días o vencidos)
@@ -564,6 +579,158 @@ export default function CentroDeInformacionPage() {
           </div>
         )}
 
+        {/* Módulo Especial Minimarket: Rutina de 10 Minutos / Conteo Cíclico Diario */}
+        <div className="card-soft rounded-3xl p-5 sm:p-6 space-y-4 border-rose-200/90 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-rose-100/80 pb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-rose-600 to-rose-500 text-white flex items-center justify-center font-black text-sm shadow-sm shadow-rose-200 shrink-0">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-lg">
+                    Rutina de 10 Minutos
+                  </span>
+                  <span className="text-xs text-slate-400 font-semibold">
+                    Conteo Cíclico y Excepciones
+                  </span>
+                </div>
+                <h2 className="text-sm font-extrabold text-slate-900 mt-0.5">
+                  Control de Productos Críticos (Clase A) y Reposición de Vitrina
+                </h2>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-end sm:self-auto">
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof window !== "undefined") {
+                    window.dispatchEvent(new CustomEvent("bvcore:open-modo-pistola"));
+                  }
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-700 hover:to-rose-600 text-white text-xs font-bold shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
+                  />
+                </svg>
+                <span>Modo Pistola (F2)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMostrarRutina10Min((prev) => !prev)}
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold transition cursor-pointer"
+              >
+                {mostrarRutina10Min ? "Minimizar" : "Expandir"}
+              </button>
+            </div>
+          </div>
+
+          {mostrarRutina10Min && (
+            <div className="space-y-3">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Verifica físicamente estos {itemsRutina10Min.length} productos clave antes del turno punta. Si el stock en góndola coincide, confírmalo en un clic. Si falta en vitrina, usa la pistola para transferir desde bodega sin descuadrar la caja.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                {itemsRutina10Min.map((prod) => {
+                  const yaVerificado = conteosVerificados[prod.sku];
+                  return (
+                    <div
+                      key={prod.sku}
+                      className={`rounded-2xl p-3.5 border transition shadow-2xs flex flex-col justify-between gap-3 ${
+                        yaVerificado
+                          ? "bg-emerald-50/60 border-emerald-200/90"
+                          : "bg-white border-slate-200/80 hover:border-rose-300"
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-1.5">
+                          <span className="text-xs font-extrabold text-slate-900 line-clamp-1">
+                            {prod.nombre}
+                          </span>
+                          <span
+                            className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border shrink-0 ${
+                              (prod.clase_abc || "A") === "A"
+                                ? "bg-amber-100 text-amber-900 border-amber-300 font-black"
+                                : "bg-slate-100 text-slate-700 border-slate-200"
+                            }`}
+                          >
+                            Clase {prod.clase_abc || "A"}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-slate-400 block mt-0.5 truncate">
+                          SKU: {prod.sku} · {prod.familia}
+                        </span>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between text-xs">
+                        <span className="text-slate-600">
+                          Vitrina: <strong className="text-rose-600 font-bold">{prod.stock_vitrina}</strong>
+                        </span>
+                        <span className="text-slate-400">|</span>
+                        <span className="text-slate-600">
+                          Bodega: <strong className="text-slate-800 font-bold">{prod.stock_bodega}</strong>
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
+                        {yaVerificado ? (
+                          <span className="w-full text-center py-1.5 text-xs font-bold text-emerald-700 bg-emerald-100/80 rounded-xl border border-emerald-300/80">
+                            ✓ Conteo Conforme
+                          </span>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConteosVerificados((prev) => ({
+                                  ...prev,
+                                  [prod.sku]: true,
+                                }));
+                                showToast(`Stock de "${prod.nombre}" verificado correctamente.`);
+                              }}
+                              className="flex-1 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-2xs cursor-pointer"
+                            >
+                              ✓ Stock OK
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (typeof window !== "undefined") {
+                                  window.dispatchEvent(
+                                    new CustomEvent("bvcore:open-modo-pistola")
+                                  );
+                                }
+                              }}
+                              className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition cursor-pointer"
+                              title="Pistolear para reponer a vitrina o ajustar"
+                            >
+                              Reponer (F2)
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Fila Principal: Desempeño Operativo (2 col) + Alertas del Local (1 col) */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Gráfico Desempeño Operativo con Selector de Período y Tipo (Barras / Torta) */}
@@ -779,10 +946,10 @@ export default function CentroDeInformacionPage() {
                 const isSelected = selectedAlert === alerta.id;
                 const badgeStyle =
                   alerta.severidad === "CRITICO"
-                    ? "bg-rose-100 text-rose-700 border-rose-200"
+                    ? "bg-rose-600 text-white border-rose-700 shadow-xs"
                     : alerta.severidad === "ALERTA"
-                    ? "bg-amber-100 text-amber-800 border-amber-200"
-                    : "bg-emerald-100 text-emerald-700 border-emerald-200";
+                    ? "bg-amber-500 text-white border-amber-600 shadow-xs"
+                    : "bg-emerald-600 text-white border-emerald-700 shadow-xs";
 
                 const cardBorder = isSelected
                   ? "border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/40"
@@ -803,19 +970,19 @@ export default function CentroDeInformacionPage() {
                         {alerta.titulo}
                       </span>
                       <span
-                        className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md border shrink-0 ${badgeStyle}`}
+                        className={`text-xs font-extrabold uppercase px-2.5 py-0.5 rounded-lg border shrink-0 ${badgeStyle}`}
                       >
                         {alerta.count} {alerta.unidadLabel}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-1 leading-snug">
+                    <p className="text-xs text-slate-600 mt-1 leading-snug">
                       {alerta.subtitulo}
                     </p>
                     <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-rose-600">
+                      <span className="text-xs font-bold text-rose-600">
                         {isSelected ? "Ocultar detalles" : "Consultar más detalles"}
                       </span>
-                      <span className="text-[11px] font-bold text-rose-600">
+                      <span className="text-xs font-bold text-rose-600">
                         {isSelected ? "▲" : "▼"}
                       </span>
                     </div>
@@ -886,10 +1053,10 @@ export default function CentroDeInformacionPage() {
                           </div>
                         </div>
                         <span
-                          className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border shrink-0 ${
+                          className={`text-xs font-extrabold px-2.5 py-0.5 rounded-lg border shrink-0 ${
                             vencido || venceHoy
-                              ? "bg-rose-100 text-rose-700 border-rose-200"
-                              : "bg-amber-100 text-amber-800 border-amber-200"
+                              ? "bg-rose-600 text-white border-rose-700 shadow-xs"
+                              : "bg-amber-500 text-white border-amber-600 shadow-xs"
                           }`}
                         >
                           {vencido
@@ -969,10 +1136,10 @@ export default function CentroDeInformacionPage() {
                           </div>
                         </div>
                         <span
-                          className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border shrink-0 ${
+                          className={`text-xs font-extrabold px-2.5 py-0.5 rounded-lg border shrink-0 ${
                             agotado
-                              ? "bg-rose-100 text-rose-700 border-rose-200"
-                              : "bg-amber-100 text-amber-800 border-amber-200"
+                              ? "bg-rose-600 text-white border-rose-700 shadow-xs"
+                              : "bg-amber-500 text-white border-amber-600 shadow-xs"
                           }`}
                         >
                           {agotado
@@ -1049,7 +1216,7 @@ export default function CentroDeInformacionPage() {
                           {anom.referencia_ticket ? ` · Boleta: ${anom.referencia_ticket}` : ""}
                         </div>
                       </div>
-                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-rose-100 text-rose-700 border border-rose-200 shrink-0">
+                      <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-lg bg-rose-600 text-white border border-rose-700 shadow-xs shrink-0">
                         Déficit: {anom.unidades_deficit} unid.
                       </span>
                     </div>
@@ -1113,7 +1280,7 @@ export default function CentroDeInformacionPage() {
                           {orp.boletas_afectadas} boleta(s) · Tipo: {orp.tipo_codigo}
                         </div>
                       </div>
-                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-200 shrink-0">
+                      <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-lg bg-amber-500 text-white border border-amber-600 shadow-xs shrink-0">
                         {orp.unidades_pendientes} unid.
                       </span>
                     </div>

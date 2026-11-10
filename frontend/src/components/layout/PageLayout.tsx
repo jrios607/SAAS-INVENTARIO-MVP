@@ -4,6 +4,7 @@ import { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
+import { ModoPistolaModal } from "./ModoPistolaModal";
 
 const LIGHT_PATHS = new Set([
   "/",
@@ -14,8 +15,6 @@ const LIGHT_PATHS = new Set([
   "/plano-bodega",
   "/recepcion",
   "/trazabilidad",
-  "/picking",
-  "/ordenes-compra",
 ]);
 
 export function PageLayout({ children }: { children: ReactNode }) {
@@ -44,6 +43,7 @@ export function PageLayout({ children }: { children: ReactNode }) {
         {!isLightPage && <Header />}
         {children}
       </main>
+      <ModoPistolaModal />
     </div>
   );
 }
