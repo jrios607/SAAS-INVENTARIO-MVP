@@ -3,7 +3,6 @@
 import { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
-import { Header } from "./Header";
 import { ModoPistolaModal } from "./ModoPistolaModal";
 
 const LIGHT_PATHS = new Set([
@@ -40,7 +39,6 @@ export function PageLayout({ children }: { children: ReactNode }) {
             : undefined
         }
       >
-        {!isLightPage && <Header />}
         {children}
       </main>
       <ModoPistolaModal />
