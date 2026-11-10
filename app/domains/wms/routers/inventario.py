@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from app.database import get_db
+from app.database import get_db_read
 from app.schemas import AlertaVencimientoResponse
 from app.services.inventario_service import get_alertas_vencimiento
-from app.core.security import require_role
+from app.core.security import get_current_user
 
 router = APIRouter(
     prefix="/inventario",
@@ -11,7 +11,7 @@ router = APIRouter(
 )
 
 @router.get("/alertas-vencimiento", response_model=AlertaVencimientoResponse)
-def route_get_alertas_vencimiento(dias_alerta: int = 7, db: Session = Depends(get_db), user = Depends(require_role("Operario", "Admin", "Supervisor"))):
+def route_get_alertas_vencimiento(dias_alerta: int = 7, db: Session = Depends(get_db_read), user = Depends(get_current_user)):
     """
     Escanea todos los SATOs en estado 'Vitrina' o 'Bodega' y retorna aquellos
     que estén a 'dias_alerta' de vencer.

@@ -121,7 +121,7 @@ def notify_erp_task(
 
     Parámetros:
         log_id      : ID del registro en Integration_Log (ya creado en estado PENDING)
-        event_type  : Tipo de evento WMS (ej: "VENTA_POS", "MERMA_DECLARADA", "ASN_RECIBIDO")
+        event_type  : Tipo de evento WMS (ej: "MERMA_DECLARADA", "ASN_RECIBIDO", "PICKING_COMPLETADO")
         payload     : Diccionario con los datos del evento
         webhook_url : URL destino del ERP
 
@@ -349,23 +349,26 @@ def dead_letter_task(
     queue="sg.integration.default",
     acks_late=True,
 )
-def calculate_compliance_batch_task() -> Dict[str, Any]:
+def calculate_compliance_batch_task(tenant_id: str = None) -> Dict[str, Any]:
     """
     Tarea programable (por ejemplo, con celery beat cada 5 mins) que 
     pre-calcula el compliance de todas las patentes y lo guarda en Redis
     para que la carga del mapa 2D sea instantánea.
+
+    Recibe tenant_id para que tanto el filtro ORM como la clave de caché
+    queden aislados en el tenant correcto.
     """
-    _set_tenant_context()  # Compliance batch runs for all tenants or default
+    _set_tenant_context(tenant_id)
     db = _get_sync_db_session()
     try:
         from app.services.slotting_service import get_compliance_batch
-        from app.core.cache import cache_set
+        from app.core.cache import cache_set, CacheKeys
         
-        logger.info("[calculate_compliance_batch_task] Iniciando cálculo de compliance batch...")
+        logger.info("[calculate_compliance_batch_task] Iniciando cálculo de compliance batch (tenant=%s)...", tenant_id)
         resultado = get_compliance_batch(db)
         
-        # Guardar en Redis por 10 minutos (600 segundos)
-        cache_set("sg:compliance:batch", resultado, ttl=600)
+        # Guardar en Redis por 10 minutos (600 segundos) — clave scoped por tenant
+        cache_set(CacheKeys.COMPLIANCE_BATCH, resultado, ttl=600)
         logger.info("[calculate_compliance_batch_task] Cálculo completado exitosamente y guardado en caché.")
         
         return {"status": "SUCCESS", "patentes_calculadas": len(resultado)}

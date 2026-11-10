@@ -20,9 +20,12 @@ class Settings(BaseSettings):
     REDIS_URL: Optional[str] = "redis://localhost:6379"
 
     # ── Seguridad ──────────────────────────────────────────────
-    JWT_SECRET_KEY: str = secrets.token_urlsafe(32)
+    JWT_SECRET_KEY: str = "sg-bvc-dev-jwt-secret-key-change-in-production-2026"
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 480  # 8 horas (1 turno)
+    # False → modo MVP/desarrollo: requests sin token se permiten (user=None).
+    # True  → staging/producción: todo endpoint protegido exige JWT válido.
+    AUTH_REQUIRED: bool = False
     
     # ── Integración M2M ────────────────────────────────────────
     INTEGRATION_API_KEY: Optional[str] = None # Para producción debe definirse en el entorno

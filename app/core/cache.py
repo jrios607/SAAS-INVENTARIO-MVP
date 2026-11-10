@@ -12,7 +12,14 @@ Estrategia:
     y el servicio continúa leyendo directo desde PostgreSQL.
   • Serialización JSON (no pickle) → portable entre workers distintos.
 
-Namespaces:
+Aislamiento Multi-Tenant:
+  Toda clave lógica `sg:<dominio>:<recurso>` se reescribe de forma transparente
+  a `sg:t:<tenant_id>:<dominio>:<recurso>` mediante `_scoped_key()`, usando el
+  `current_tenant_id` del request (o del worker Celery). Esto evita que un
+  tenant lea datos cacheados de otro (Cross-Tenant Cache Poisoning). Los
+  llamadores siguen usando las claves lógicas de `CacheKeys` sin cambios.
+
+Namespaces (lógicos, antes del scoping por tenant):
   sg:catalogo:productos:all          → Lista completa del catálogo
   sg:catalogo:producto:{sku}         → Producto individual
   sg:catalogo:stock_agrupado         → Vista de stock por familia
@@ -24,23 +31,54 @@ Namespaces:
 
 import json
 import logging
+import re
 from typing import Optional, Any, List
 
 from app.core.config import settings
+from app.core.tenant import current_tenant_id
 
 logger = logging.getLogger("sg-wms.cache")
+
+# Prefijo raíz de todas las claves del sistema
+_ROOT_PREFIX = "sg:"
+_REDIS_UNSAFE_TENANT_RE = re.compile(r"[\*\?\[\]\\:\x00-\x1f]")
+
+
+def _scoped_key(key: str) -> str:
+    """
+    Aísla una clave (o patrón glob) de Redis por tenant.
+
+    `sg:catalogo:productos:all` → `sg:t:<tenant_id>:catalogo:productos:all`
+
+    Es idempotente: una clave ya particionada para el tenant actual no se
+    vuelve a prefijar. Si no hay tenant en contexto (scripts sueltos), se usa
+    DEFAULT_TENANT_ID para no mezclar nunca datos en un namespace global.
+    Sanitiza metacaracteres glob (*, ?, [, ], \\, :) en tenant_id para prevenir
+    inyección de patrones en SCAN.
+    """
+    raw_tenant_id = current_tenant_id.get() or settings.DEFAULT_TENANT_ID
+    safe_tenant_id = _REDIS_UNSAFE_TENANT_RE.sub("_", str(raw_tenant_id))[:64] or "default"
+    tenant_prefix = f"{_ROOT_PREFIX}t:{safe_tenant_id}:"
+    if key.startswith(tenant_prefix):
+        return key
+    if key.startswith(_ROOT_PREFIX):
+        return tenant_prefix + key[len(_ROOT_PREFIX):]
+    return tenant_prefix + key
 
 # ── TTL por dominio (segundos) ─────────────────────────────────────────────
 TTL_CATALOGO      = 3_600   # 1 hora  — catálogo de productos (baja mutación)
 TTL_PLANOGRAMA    = 1_800   # 30 min  — planogramas/micro-slotting
 TTL_MAPA_BODEGA   = 900     # 15 min  — mapa en tiempo semi-real
 TTL_DASHBOARD_KPI = 300     # 5 min   — KPIs gerenciales
+TTL_ABC_ZONAS     = 300     # 5 min   — Zonas térmicas ABC por patente
 
 # ── Prefijos de namespace ─────────────────────────────────────────────────
 NS_CATALOGO   = "sg:catalogo"
 NS_PLANOGRAMA = "sg:planograma"
 NS_MAPA       = "sg:mapa"
 NS_DASHBOARD  = "sg:dashboard"
+NS_ABC        = "sg:abc"
+NS_TENANT     = "sg:tenant"
 
 
 # ── Inicialización del cliente Redis con Connection Pool ───────────────────
@@ -95,6 +133,7 @@ def cache_get(key: str) -> Optional[Any]:
     client = _get_redis()
     if not client:
         return None
+    key = _scoped_key(key)
     try:
         raw = client.get(key)
         if raw:
@@ -114,6 +153,7 @@ def cache_set(key: str, value: Any, ttl: int = TTL_CATALOGO) -> bool:
     client = _get_redis()
     if not client:
         return False
+    key = _scoped_key(key)
     try:
         client.setex(key, ttl, json.dumps(value, default=str))
         logger.debug("CACHE SET → %s (TTL=%ds)", key, ttl)
@@ -128,6 +168,7 @@ def cache_delete(key: str) -> bool:
     client = _get_redis()
     if not client:
         return False
+    key = _scoped_key(key)
     try:
         deleted = client.delete(key)
         logger.info("CACHE INVALIDATED → %s (deleted=%d)", key, deleted)
@@ -148,6 +189,7 @@ def cache_delete_pattern(pattern: str) -> int:
     client = _get_redis()
     if not client:
         return 0
+    pattern = _scoped_key(pattern)   # Solo invalida claves del tenant actual
     deleted_count = 0
     try:
         cursor = 0
@@ -175,6 +217,8 @@ class CacheKeys:
     COMPLIANCE_BATCH       = f"{NS_PLANOGRAMA}:compliance:batch"
     MAPA_BODEGA            = f"{NS_MAPA}:bodega"
     DASHBOARD_KPIS         = f"{NS_DASHBOARD}:kpis"
+    ABC_ZONAS_PATENTES     = f"{NS_ABC}:zonas:patentes"
+    TENANT_SETTINGS        = f"{NS_TENANT}:settings"
 
     @staticmethod
     def catalogo_producto(sku: str) -> str:
@@ -187,6 +231,11 @@ class CacheKeys:
     @staticmethod
     def stock_zona(id_patente: str) -> str:
         return f"{NS_MAPA}:stock:{id_patente}"
+
+    @staticmethod
+    def idempotency(scope: str, key: str) -> str:
+        """Clave de idempotencia para webhooks M2M (ASN, ventas externas)."""
+        return f"sg:idempotency:{scope}:{key}"
 
 
 def invalidar_catalogo_completo() -> None:
@@ -213,6 +262,25 @@ def invalidar_mapa_bodega() -> None:
     """Invalida la vista de mapa de bodega (stock de zonas)."""
     cache_delete_pattern(f"{NS_MAPA}:*")
     logger.info("[CACHE] Cache de Mapa Bodega INVALIDADO.")
+
+
+def invalidar_abc() -> None:
+    """Invalida las vistas cacheadas de clasificación y zonas térmicas ABC del tenant actual."""
+    cache_delete_pattern(f"{NS_ABC}:*")
+    logger.info("[CACHE] Cache de Motor ABC INVALIDADO.")
+
+
+def invalidar_stock_y_kpis() -> None:
+    """
+    Invalida todas las vistas derivadas del stock del tenant actual.
+    Llamar tras cualquier descuento/movimiento de SATOs (p. ej. ventas externas).
+    """
+    invalidar_mapa_bodega()
+    invalidar_abc()
+    cache_delete(CacheKeys.CATALOGO_STOCK_AGR)
+    cache_delete(CacheKeys.COMPLIANCE_BATCH)
+    cache_delete(CacheKeys.DASHBOARD_KPIS)
+    logger.info("[CACHE] Vistas de stock y KPIs INVALIDADAS.")
 
 
 # Aliases backward-compat para no romper imports existentes

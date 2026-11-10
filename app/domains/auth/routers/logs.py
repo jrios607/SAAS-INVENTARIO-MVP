@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from datetime import date
 from typing import Optional
 
-from app.database import get_db
+from app.database import get_db_read
 from app.core.security import get_current_user, require_role
 from app.services.trazabilidad_service import get_logs_service, get_arbol_sato_service
 
@@ -21,7 +21,7 @@ def get_logs(
     fecha_fin: Optional[date] = None,
     limit: int = 50,
     offset: int = 0,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_read),
     user = Depends(get_current_user)
 ):
     """
@@ -35,7 +35,7 @@ def get_logs(
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
 @router.get("/sato/{sato_id}/arbol")
-def get_arbol_sato(sato_id: uuid.UUID, db: Session = Depends(get_db), user = Depends(get_current_user)):
+def get_arbol_sato(sato_id: uuid.UUID, db: Session = Depends(get_db_read), user = Depends(get_current_user)):
     """
     Obtiene el árbol genealógico completo de un SATO.
     """

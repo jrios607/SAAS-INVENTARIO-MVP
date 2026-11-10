@@ -41,7 +41,7 @@ IMPORTANTE — Limitación de RoutingSession:
 """
 
 import logging
-from sqlalchemy import create_engine, event, text, orm
+from sqlalchemy import create_engine, event, text, orm, bindparam
 from sqlalchemy.orm import sessionmaker, declarative_base, Session, Mapper
 from app.core.config import settings
 from app.core.tenant import current_tenant_id
@@ -50,17 +50,36 @@ logger = logging.getLogger("sg-wms.database")
 
 # ── MOTOR DE ESCRITURA (Primary Writer / Neon Main Branch) ────────────────
 _db_url = settings.DATABASE_POOLER_URL or settings.DATABASE_URL
+_is_sqlite = _db_url.startswith("sqlite")
 
-engine = create_engine(
-    _db_url,
-    pool_pre_ping=True,
-    pool_size=settings.DB_POOL_SIZE,
-    max_overflow=settings.DB_MAX_OVERFLOW,
-    pool_timeout=settings.DB_POOL_TIMEOUT,
-    pool_recycle=settings.DB_POOL_RECYCLE,
-    pool_use_lifo=True,          # Reusar conexiones calientes (óptimo para PgBouncer)
-    connect_args={"options": "-c timezone=utc"},
-)
+if _is_sqlite:
+    # Desarrollo local / tests. SQLite NO soporta SELECT ... FOR UPDATE:
+    # los bloqueos FEFO solo son reales en PostgreSQL.
+    engine = create_engine(_db_url, connect_args={"check_same_thread": False})
+
+    @event.listens_for(engine, "connect")
+    def _sqlite_on_connect(dbapi_conn, connection_record):
+        # Receta oficial SQLAlchemy: desactivar el manejo de transacciones de
+        # pysqlite para que los SAVEPOINT (begin_nested) funcionen correctamente.
+        dbapi_conn.isolation_level = None
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    @event.listens_for(engine, "begin")
+    def _sqlite_on_begin(conn):
+        conn.exec_driver_sql("BEGIN")
+else:
+    engine = create_engine(
+        _db_url,
+        pool_pre_ping=True,
+        pool_size=settings.DB_POOL_SIZE,
+        max_overflow=settings.DB_MAX_OVERFLOW,
+        pool_timeout=settings.DB_POOL_TIMEOUT,
+        pool_recycle=settings.DB_POOL_RECYCLE,
+        pool_use_lifo=True,          # Reusar conexiones calientes (óptimo para PgBouncer)
+        connect_args={"options": "-c timezone=utc"},
+    )
 
 # ── MOTOR DE LECTURA (Read Replica / Neon Read Replica Branch) ────────────────────
 # IMPORTANTE: Si DATABASE_READ_URL no está configurada, reusar el mismo
@@ -125,14 +144,21 @@ class RoutingSession(Session):
         Override del método de binding de SQLAlchemy.
         Determina qué engine usar basado en el tipo de operación.
         """
-        # Si hay escrituras pendientes en la sesión → forzar Primary
-        # (garantiza consistencia Read-Your-Writes dentro de una transacción)
-        if self._flushing or self.new or self.dirty or self.deleted:
+        # Si hay escrituras pendientes o modo Primary explícito → forzar Primary
+        # (garantiza consistencia Read-Your-Writes dentro de una transacción o recálculo post-commit)
+        if getattr(self, "_force_primary", False) or self._flushing or self.new or self.dirty or self.deleted:
             logger.debug("DB BIND → PRIMARY (dirty session / mutation context)")
             return engine
 
         # Inspeccionar el clause (statement SQL) si está disponible
         if clause is not None:
+            # SELECT ... FOR UPDATE → SIEMPRE Primary. Los bloqueos pesimistas
+            # (FEFO, ajustes, mermas, ventas externas) deben tomarse en el nodo
+            # que recibirá la escritura; en una réplica no protegen nada.
+            if getattr(clause, "_for_update_arg", None) is not None:
+                logger.debug("DB BIND → PRIMARY (SELECT FOR UPDATE)")
+                return engine
+
             # Obtener el texto de la cláusula para clasificarla
             clause_type = type(clause).__name__.upper()
 
@@ -185,13 +211,19 @@ Base = declarative_base()
 @event.listens_for(Session, "do_orm_execute")
 def _add_tenant_filter(execute_state):
     tenant_id = current_tenant_id.get()
-    if tenant_id and execute_state.is_select and not execute_state.is_column_load and not execute_state.is_relationship_load:
+    if (
+        tenant_id
+        and (execute_state.is_select or execute_state.is_update or execute_state.is_delete)
+        and not execute_state.is_column_load
+        and not execute_state.is_relationship_load
+    ):
+        tenant_param = bindparam("current_tenant_id", value=tenant_id)
         execute_state.statement = execute_state.statement.options(
             orm.with_loader_criteria(
                 Base,
-                lambda cls: cls.tenant_id == tenant_id if hasattr(cls, "tenant_id") else True,
+                lambda cls: cls.tenant_id == tenant_param if hasattr(cls, "tenant_id") else True,
                 include_aliases=True,
-                track_closure_variables=False
+                track_closure_variables=True,
             )
         )
 

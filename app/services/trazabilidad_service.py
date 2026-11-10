@@ -8,9 +8,9 @@ from app.models import Log_Transaccional, Sato, Usuario
 
 def get_logs_service(db: Session, q: Optional[str], accion: Optional[str], fecha_inicio: Optional[date], fecha_fin: Optional[date], limit: int, offset: int) -> dict:
     query = db.query(Log_Transaccional, Sato, Usuario).outerjoin(
-        Sato, Log_Transaccional.sato_id == Sato.sato_id
+        Sato, (Log_Transaccional.sato_id == Sato.sato_id) & (Log_Transaccional.tenant_id == Sato.tenant_id)
     ).outerjoin(
-        Usuario, Log_Transaccional.usuario_id == Usuario.id
+        Usuario, (Log_Transaccional.usuario_id == Usuario.id) & (Log_Transaccional.tenant_id == Usuario.tenant_id)
     )
 
     if q:
@@ -65,24 +65,36 @@ def get_logs_service(db: Session, q: Optional[str], accion: Optional[str], fecha
     }
 
 def get_arbol_sato_service(db: Session, sato_id: uuid.UUID) -> dict:
-    """MEDIO-10: Carga todos los descendientes en 1 sola query con CTE."""
+    """Carga la jerarquía completa (LPN Contenedor → SATO Bodega → SATO Hijo Vitrina)."""
     raiz = db.query(Sato).filter(Sato.sato_id == sato_id).first()
     if not raiz:
         raise ValueError("SATO no encontrado")
-        
-    while raiz.padre_id:
+
+    visitados_up = {raiz.sato_id}
+    while raiz.padre_id and raiz.padre_id not in visitados_up:
         padre = db.query(Sato).filter(Sato.sato_id == raiz.padre_id).first()
-        if not padre: break
+        if not padre:
+            break
+        visitados_up.add(padre.sato_id)
         raiz = padre
-        
-    todos = db.query(Sato).filter(
-        or_(Sato.sato_id == raiz.sato_id, Sato.padre_id == raiz.sato_id)
-    ).all()
-    
-    hijos_map = {}
-    for s in todos:
-        hijos_map.setdefault(s.padre_id, []).append(s)
-        
+
+    nodos_por_id = {raiz.sato_id: raiz}
+    hijos_map: dict = {}
+    frontera = [raiz.sato_id]
+
+    # Expansión BFS por niveles en batch (máximo 5 niveles para prevenir ciclos)
+    for _ in range(5):
+        if not frontera:
+            break
+        hijos_nivel = db.query(Sato).filter(Sato.padre_id.in_(frontera)).all()
+        nueva_frontera = []
+        for h in hijos_nivel:
+            if h.sato_id not in nodos_por_id:
+                nodos_por_id[h.sato_id] = h
+                hijos_map.setdefault(h.padre_id, []).append(h)
+                nueva_frontera.append(h.sato_id)
+        frontera = nueva_frontera
+
     def build_tree(sato):
         return {
             "sato_id": str(sato.sato_id),
@@ -91,9 +103,9 @@ def get_arbol_sato_service(db: Session, sato_id: uuid.UUID) -> dict:
             "sku": sato.sku,
             "cantidad": sato.cantidad,
             "estado": sato.estado,
-            "hijos": [build_tree(h) for h in hijos_map.get(sato.sato_id, [])]
+            "hijos": [build_tree(h) for h in hijos_map.get(sato.sato_id, [])],
         }
-        
+
     return build_tree(raiz)
 
 def buscar_por_lote(db: Session, numero_lote: str) -> dict:
@@ -101,7 +113,8 @@ def buscar_por_lote(db: Session, numero_lote: str) -> dict:
     from app.models import Catalogo_Producto
     
     satos = db.query(Sato, Catalogo_Producto).join(
-        Catalogo_Producto, Sato.sku == Catalogo_Producto.sku
+        Catalogo_Producto,
+        (Sato.sku == Catalogo_Producto.sku) & (Sato.tenant_id == Catalogo_Producto.tenant_id),
     ).filter(
         Sato.tipo_sato == "PRODUCTO",
         Sato.lote == numero_lote,

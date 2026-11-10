@@ -21,11 +21,13 @@ Patrón implementado: Transactional Outbox + Async Message Dispatch
   └─────────────────────────────────────────────────────────────────────────┘
 
 Eventos soportados:
-  • VENTA_POS_CONSOLIDADA   — Generado por el POS al cerrar un ticket
   • ASN_RECIBIDO            — Generado al recepcionar mercadería
   • MERMA_DECLARADA         — Generado al registrar una merma
   • PICKING_COMPLETADO      — Generado al completar una ola de picking
   • INVENTARIO_AJUSTADO     — Generado por ajustes manuales
+
+  (Las ventas ya no se originan en SG-BVC: llegan desde POS externos vía
+   app/services/external_sales_service.py y se registran como VENTA_EXTERNA_POS.)
 """
 
 import json
@@ -144,19 +146,6 @@ def _dispatch_to_celery(log_id: int, event_type: str, payload: dict, url: str) -
 # Wrappers con tipado fuerte para cada dominio de negocio.
 # Los routers los usan directamente, sin conocer los detalles de Celery.
 
-def emit_venta_pos(db: Session, items_vendidos: list, total_unidades: int) -> int:
-    """Emite evento de venta POS hacia el ERP."""
-    return emit_event(
-        db=db,
-        event_type="VENTA_POS_CONSOLIDADA",
-        payload={
-            "items":           items_vendidos,
-            "total_unidades":  total_unidades,
-            "sucursal":        "SG-BVC-01",
-        },
-    )
-
-
 def emit_merma_declarada(db: Session, sku: str, cantidad: int, lote: Optional[str], motivo: Optional[str]) -> int:
     """Emite evento de merma declarada hacia el ERP."""
     return emit_event(
@@ -238,49 +227,99 @@ def reconcile_pending_events(db: Session, max_age_minutes: int = 15) -> int:
 
 def procesar_asn_inbound(db: Session, payload: dict) -> dict:
     """
-    Parsea un ASN del ERP y lo inserta en la base de datos.
-    Payload esperado:
-    {
-      "proveedor": "Nombre Proveedor",
-      "fecha_recepcion_esperada": "YYYY-MM-DD",
-      "detalles": [
-         {"sku": "123456", "cantidad_esperada": 100},
-         ...
-      ]
-    }
+    Parsea un ASN del ERP y lo inserta en la base de datos de forma atómica.
+    Soporta tanto el contrato estándar (`lpn`, `origen`, `detalles[{sku, cantidad, lote, fecha_vencimiento}]`)
+    como el formato legacy (`proveedor`, `detalles[{sku, cantidad_esperada}]`), creando Ghost SKUs
+    en la misma transacción si algún SKU no existe aún en el catálogo del tenant.
     """
-    proveedor = payload.get("proveedor", "Proveedor Desconocido")
-    fecha_esperada_str = payload.get("fecha_recepcion_esperada", date.today().isoformat())
-    try:
-        fecha_esperada = date.fromisoformat(fecha_esperada_str)
-    except ValueError:
-        fecha_esperada = date.today()
+    import uuid
+    from app.core.tenant import current_tenant_id
+    from app.core.cache import invalidar_catalogo_completo, invalidar_stock_y_kpis
+    from app.services.catalogo_service import invalidar_cache_catalogo
+
+    tenant_id = current_tenant_id.get() or settings.DEFAULT_TENANT_ID
+    lpn = str(payload.get("lpn") or f"ASN-{uuid.uuid4().hex[:10].upper()}").strip()
+    origen = str(payload.get("origen") or payload.get("proveedor") or "Proveedor Desconocido").strip()
+
+    asn_existente = db.query(ASN_Padre).filter(ASN_Padre.lpn == lpn).first()
+    if asn_existente:
+        raise ValueError(f"El ASN {lpn} ya existe.")
+
+    detalles = payload.get("detalles") or []
+    skus_entrantes = list({str(det.get("sku")).strip() for det in detalles if det.get("sku")})
+
+    skus_faltantes: list[str] = []
+    if skus_entrantes:
+        existentes_rows = (
+            db.query(Catalogo_Producto.sku)
+            .filter(Catalogo_Producto.sku.in_(skus_entrantes))
+            .all()
+        )
+        skus_existentes = {r[0] for r in existentes_rows}
+        skus_faltantes = [s for s in skus_entrantes if s not in skus_existentes]
+
+        for sku_fantasma in skus_faltantes:
+            db.add(
+                Catalogo_Producto(
+                    tenant_id=tenant_id,
+                    sku=sku_fantasma,
+                    nombre="⚠️ PRODUCTO DESCONOCIDO - PENDIENTE DE REVISIÓN",
+                    ean=f"GHOST-{sku_fantasma}",
+                    familia="Sin Familia",
+                    sub_familia="Sin Sub-familia",
+                    proveedor_marca="Desconocido",
+                    tolerancia_vencimiento_dias=0,
+                )
+            )
+        if skus_faltantes:
+            db.flush()
 
     nuevo_asn = ASN_Padre(
-        proveedor=proveedor,
-        fecha_recepcion_esperada=fecha_esperada,
-        estado="PENDIENTE"
+        tenant_id=tenant_id,
+        lpn=lpn,
+        origen=origen,
+        estado="EN_TRANSITO",
     )
     db.add(nuevo_asn)
     db.flush()
 
-    detalles = payload.get("detalles", [])
     for det in detalles:
-        sku      = det.get("sku")
-        cantidad = det.get("cantidad_esperada", 0)
-        if not db.query(Catalogo_Producto).filter_by(sku=sku).first():
+        sku = str(det.get("sku") or "").strip()
+        if not sku:
             continue
+        cantidad = int(det.get("cantidad") or det.get("cantidad_esperada") or 0)
+        if cantidad <= 0:
+            continue
+        fecha_venc = det.get("fecha_vencimiento")
+        if isinstance(fecha_venc, str) and fecha_venc.strip():
+            try:
+                fecha_venc = date.fromisoformat(fecha_venc.strip())
+            except ValueError:
+                fecha_venc = None
         nuevo_detalle = ASN_Detalle(
-            asn_id=nuevo_asn.id,
+            tenant_id=tenant_id,
+            lpn_padre=lpn,
             sku=sku,
-            cantidad_esperada=cantidad,
-            cantidad_recibida=0
+            cantidad=cantidad,
+            lote=det.get("lote"),
+            fecha_vencimiento=fecha_venc,
         )
         db.add(nuevo_detalle)
 
     db.commit()
     db.refresh(nuevo_asn)
-    return {"mensaje": "ASN inyectado con exito", "asn_id": nuevo_asn.id}
+
+    if skus_faltantes:
+        invalidar_cache_catalogo()
+        invalidar_catalogo_completo()
+    invalidar_stock_y_kpis()
+
+    return {
+        "mensaje": "ASN inyectado con éxito",
+        "lpn": nuevo_asn.lpn,
+        "asn_id": nuevo_asn.lpn,
+        "skus_fantasmas_creados": skus_faltantes,
+    }
 
 
 # ── Alias backward-compat (no romper imports existentes) ─────────────────

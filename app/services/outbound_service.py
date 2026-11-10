@@ -30,15 +30,15 @@ def generar_ola_picking(db: Session, pedido_ids: list[int], user_id: int | None 
         for detalle in detalles:
             cantidad_requerida = detalle.cantidad
             
-            # 2. Lógica FEFO: Buscar SATOs en Vitrina, ordenados por vencimiento ASC
+            # 2. Lógica FEFO determinista: Buscar SATOs en Vitrina, ordenados por vencimiento ASC + sato_id ASC
             satos_disponibles = db.query(Sato).filter(
                 Sato.sku == detalle.sku,
                 Sato.estado == "Vitrina",
                 Sato.cantidad > 0
             ).order_by(
                 Sato.fecha_vencimiento.asc().nulls_last(),
-                Sato.cantidad.desc()
-            ).with_for_update(skip_locked=True).all()
+                Sato.sato_id.asc()
+            ).with_for_update().all()
 
             for sato in satos_disponibles:
                 if cantidad_requerida <= 0:
@@ -72,11 +72,11 @@ def obtener_tareas_ola(db: Session, ola_id: int) -> dict:
     tareas = db.query(
         Tarea_Picking, Sato, Patente, Catalogo_Producto
     ).join(
-        Sato, Tarea_Picking.sato_id == Sato.sato_id
+        Sato, (Tarea_Picking.sato_id == Sato.sato_id) & (Tarea_Picking.tenant_id == Sato.tenant_id)
     ).outerjoin(
-        Patente, Sato.ubicacion_id == Patente.id_patente
+        Patente, (Sato.ubicacion_id == Patente.id_patente) & (Sato.tenant_id == Patente.tenant_id)
     ).join(
-        Catalogo_Producto, Tarea_Picking.sku == Catalogo_Producto.sku
+        Catalogo_Producto, (Tarea_Picking.sku == Catalogo_Producto.sku) & (Tarea_Picking.tenant_id == Catalogo_Producto.tenant_id)
     ).filter(
         Tarea_Picking.ola_id == ola_id,
         Tarea_Picking.estado == "PENDIENTE"
@@ -176,12 +176,10 @@ def registrar_faltante_tarea(db: Session, tarea_id: int, background_tasks: Backg
         ola = db.query(Ola_Picking).filter(Ola_Picking.id == tarea.ola_id).first()
         if ola:
             ola.estado = "COMPLETADA"
-            
-    db.commit()
-    
-    # ── Emitir Webhook al ERP ──
+
+    # ── Emitir Evento Transactional Outbox al ERP antes de commit ──
     try:
-        from app.services.integration_service import emitir_webhook
+        from app.services.integration_service import emit_event
         import datetime
         payload = {
             "sato_id": str(sato.sato_id) if sato else None,
@@ -189,13 +187,13 @@ def registrar_faltante_tarea(db: Session, tarea_id: int, background_tasks: Backg
             "cantidad_faltante": tarea.cantidad_a_extraer,
             "pedido_id": tarea.pedido_id,
             "ola_id": tarea.ola_id,
-            "timestamp": datetime.datetime.now().isoformat()
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
         }
-        
-        background_tasks.add_task(emitir_webhook, db, "wms.inventory.adjusted", payload)
+        emit_event(db, "wms.inventory.adjusted", payload)
     except Exception as e:
         print(f"Error scheduling webhook: {e}")
 
+    db.commit()
     return {"mensaje": "Faltante registrado y SATO marcado como quebrado."}
 
 def obtener_olas_activas(db: Session) -> list[dict]:

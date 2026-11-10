@@ -18,6 +18,7 @@ from sqlalchemy import func, asc
 
 from app.database import get_db_read           # ← Read Replica (CQRS)
 from app.models import Patente, Sato, Catalogo_Producto
+from app.core.security import get_current_user
 from app.core.cache import (
     cache_get, cache_set,
     invalidar_mapa_bodega,
@@ -32,7 +33,7 @@ router = APIRouter(prefix="/api/v1/mapa/bodega", tags=["Mapa Bodega"])
 # ─── GET /api/v1/mapa/bodega/ ─────────────────────────────────────────────
 
 @router.get("/")
-def get_patentes_bodega(db: Session = Depends(get_db_read)):
+def get_patentes_bodega(db: Session = Depends(get_db_read), user = Depends(get_current_user)):
     """
     Retorna el mapa completo de patentes de bodega con sus KPIs de ocupación.
     Cacheado 15 min en Redis — N+1 queries eliminadas.
@@ -87,7 +88,7 @@ def get_patentes_bodega(db: Session = Depends(get_db_read)):
 # ─── GET /api/v1/mapa/bodega/{id_patente}/stock ───────────────────────────
 
 @router.get("/{id_patente}/stock")
-def get_stock_zona_bodega(id_patente: str, db: Session = Depends(get_db_read)):
+def get_stock_zona_bodega(id_patente: str, db: Session = Depends(get_db_read), user = Depends(get_current_user)):
     """
     Retorna el stock FEFO de una zona específica de bodega.
     Cacheado 15 min por patente → `sg:mapa:stock:{id_patente}`.
@@ -107,13 +108,16 @@ def get_stock_zona_bodega(id_patente: str, db: Session = Depends(get_db_read)):
 
     satos = (
         db.query(Sato, Catalogo_Producto.nombre)
-        .join(Catalogo_Producto, Sato.sku == Catalogo_Producto.sku)
+        .join(
+            Catalogo_Producto,
+            (Sato.sku == Catalogo_Producto.sku) & (Sato.tenant_id == Catalogo_Producto.tenant_id),
+        )
         .filter(
             Sato.ubicacion_id == id_patente,
             Sato.estado == "Bodega",
             Sato.cantidad > 0,
         )
-        .order_by(asc(Sato.fecha_vencimiento))   # FEFO explícito
+        .order_by(Sato.fecha_vencimiento.asc().nulls_last(), Sato.sato_id.asc())   # FEFO explícito
         .all()
     )
 

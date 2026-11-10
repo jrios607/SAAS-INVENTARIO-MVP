@@ -15,6 +15,7 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     usuario: str
     rol: str
+    tenant_id: str
 
 
 class UsuarioResponse(BaseModel):
@@ -48,8 +49,9 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    token = create_access_token(data={"sub": user.id, "rol": user.rol})
-    return TokenResponse(access_token=token, usuario=user.nombre, rol=user.rol)
+    # tenant_id en el payload → get_current_user rechaza tokens usados contra otro tenant
+    token = create_access_token(data={"sub": str(user.id), "rol": user.rol, "tenant_id": user.tenant_id})
+    return TokenResponse(access_token=token, usuario=user.nombre, rol=user.rol, tenant_id=user.tenant_id)
 
 
 @router.get("/me", response_model=UsuarioResponse)
