@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { UserHeaderAvatar } from "@/components/layout/UserHeaderAvatar";
 import {
   getLogsTrazabilidad,
   getArbolSato,
@@ -432,9 +433,7 @@ export default function TrazabilidadPage() {
               {isLoading ? "Actualizando..." : "Actualizar"}
             </button>
             <div className="flex items-center pl-2 border-l border-slate-200">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-rose-600 to-rose-500 text-white font-bold text-xs flex items-center justify-center shadow-xs">
-                A
-              </div>
+              <UserHeaderAvatar />
             </div>
           </div>
         </div>

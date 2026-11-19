@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { UserHeaderAvatar } from "@/components/layout/UserHeaderAvatar";
 import {
   getStockAgrupado,
   declararMermaRapida,
@@ -511,9 +512,7 @@ export default function AjustesBodegaPage() {
             </span>
             ¿Cómo funciona?
           </button>
-          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-rose-300 to-pink-400 flex items-center justify-center font-bold text-white text-sm shadow-sm">
-            A
-          </div>
+          <UserHeaderAvatar />
         </div>
       </header>
 

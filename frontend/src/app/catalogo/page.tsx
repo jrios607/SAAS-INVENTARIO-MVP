@@ -811,10 +811,17 @@ export default function CatalogoPage() {
               </>
             )}
 
-            {/* Avatar Administrador */}
+            {/* Avatar Usuario Activo */}
             <div className="flex items-center pl-2 border-l border-slate-200">
-              <div className="w-8 h-8 rounded-full bg-rose-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
-                A
+              <div
+                title={
+                  userSession
+                    ? `${userSession.usuario} (${userSession.rol})`
+                    : "Modo Local"
+                }
+                className="w-8 h-8 rounded-full bg-rose-600 text-white font-bold text-xs flex items-center justify-center shadow-xs select-none"
+              >
+                {userSession ? userSession.usuario.slice(0, 1).toUpperCase() : "A"}
               </div>
             </div>
           </div>
