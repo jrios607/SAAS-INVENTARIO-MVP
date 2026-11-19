@@ -42,6 +42,15 @@ def _columnas_tenant(is_postgres: bool) -> List[Tuple[str, str]]:
     ]
 
 
+def _columnas_satos(is_postgres: bool) -> List[Tuple[str, str]]:
+    bool_false = "FALSE" if is_postgres else "0"
+    return [
+        ("en_liquidacion", f"BOOLEAN NOT NULL DEFAULT {bool_false}"),
+        ("precio_liquidacion", "INTEGER"),
+        ("liquidacion_at", "TIMESTAMP"),
+    ]
+
+
 def _columnas_venta_externa(is_postgres: bool) -> List[Tuple[str, str]]:
     bool_false = "FALSE" if is_postgres else "0"
     return [
@@ -85,6 +94,13 @@ def _apply_ddl_on_connection(conn: Connection) -> None:
         conn.execute(
             text("CREATE INDEX IF NOT EXISTS idx_venta_externa_fecha_dt ON venta_externa (fecha_venta_dt)")
         )
+
+    if "satos" in tablas:
+        existentes_s = {col["name"] for col in inspector.get_columns("satos")}
+        for col_name, col_ddl in _columnas_satos(is_postgres):
+            if col_name not in existentes_s:
+                conn.execute(text(f"ALTER TABLE satos ADD COLUMN {col_name} {col_ddl}"))
+                logger.info("[migrations] Columna agregada: satos.%s", col_name)
 
 
 def ensure_schema_up_to_date(target_engine: Union[Engine, Connection]) -> None:

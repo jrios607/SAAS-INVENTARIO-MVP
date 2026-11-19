@@ -26,6 +26,7 @@ from app.models import (
     Anomalia_Stock,
     Catalogo_Producto,
     Configuracion_Conteo_Tenant,
+    Log_Transaccional,
     Patente,
     Sato,
     Venta_Externa_Item,
@@ -36,6 +37,7 @@ from app.schemas import (
     AnomaliaStockResponse,
     ConfigConteoResponse,
     ConfigConteoUpdate,
+    ConteoCiclicoOkResponse,
     ZonaAbcPatenteItem,
 )
 
@@ -566,3 +568,104 @@ def listar_anomalias_stock(
         )
         for anom, nombre_prod, clase_abc in filas
     ]
+
+
+def confirmar_conteo_ciclico_ok(
+    db: Session,
+    sku: str,
+    origen: str = "RUTINA_10MIN",
+    observacion: Optional[str] = None,
+    resolver_anomalias: bool = True,
+    user_id: Optional[int] = None,
+) -> ConteoCiclicoOkResponse:
+    """
+    Confirma el conteo cíclico conforme (sin diferencia física) para un SKU:
+      1. Persiste `Catalogo_Producto.ultimo_conteo_at` en UTC.
+      2. Calcula el stock activo verificado en Vitrina y Bodega (orden FEFO determinista).
+      3. Si `resolver_anomalias=True`, cierra todas las `Anomalia_Stock` en estado `ABIERTA` del SKU.
+      4. Registra `CONTEO_CICLICO_SIN_DIFERENCIA` en `Log_Transaccional` si existe al menos
+         un SATO histórico para respetar la FK NOT NULL `log_transaccional.sato_id`.
+    """
+    producto = db.query(Catalogo_Producto).filter(Catalogo_Producto.sku == sku).first()
+    if not producto:
+        raise LookupError(f"No se encontró el producto con SKU '{sku}' en el catálogo.")
+
+    ahora = datetime.now(timezone.utc)
+    producto.ultimo_conteo_at = ahora
+
+    satos_activos = (
+        db.query(Sato)
+        .filter(
+            Sato.tipo_sato == "PRODUCTO",
+            Sato.estado.in_(["Vitrina", "Bodega", "Bodega Recepcion"]),
+            Sato.cantidad > 0,
+            Sato.sku == producto.sku,
+        )
+        .order_by(Sato.fecha_vencimiento.asc().nulls_last(), Sato.sato_id.asc())
+        .all()
+    )
+
+    stock_vitrina = sum(int(s.cantidad or 0) for s in satos_activos if s.estado == "Vitrina")
+    stock_bodega = sum(
+        int(s.cantidad or 0)
+        for s in satos_activos
+        if s.estado in ("Bodega", "Bodega Recepcion")
+    )
+    stock_total = stock_vitrina + stock_bodega
+
+    anomalias_cerradas = 0
+    if resolver_anomalias:
+        abiertas = (
+            db.query(Anomalia_Stock)
+            .filter(
+                Anomalia_Stock.sku == producto.sku,
+                Anomalia_Stock.estado == "ABIERTA",
+            )
+            .all()
+        )
+        for anom in abiertas:
+            anom.estado = "RESUELTA"
+            anom.resolved_at = ahora
+            anomalias_cerradas += 1
+
+    ref_sato = satos_activos[0] if satos_activos else (
+        db.query(Sato)
+        .filter(Sato.sku == producto.sku)
+        .order_by(Sato.sato_id.asc())
+        .first()
+    )
+
+    log_registrado = False
+    if ref_sato is not None:
+        partes_detalle = [
+            f"Conteo cíclico OK [{origen}] para SKU {producto.sku} ({producto.nombre})",
+            f"Vitrina: {stock_vitrina} un, Bodega: {stock_bodega} un, Total: {stock_total} un",
+        ]
+        if anomalias_cerradas > 0:
+            partes_detalle.append(f"Anomalías cerradas: {anomalias_cerradas}")
+        if observacion and observacion.strip():
+            partes_detalle.append(f"Obs: {observacion.strip()}")
+
+        log = Log_Transaccional(
+            tenant_id=producto.tenant_id,
+            sato_id=ref_sato.sato_id,
+            usuario_id=user_id,
+            accion="CONTEO_CICLICO_SIN_DIFERENCIA",
+            detalles=". ".join(partes_detalle),
+        )
+        db.add(log)
+        log_registrado = True
+
+    db.flush()
+
+    return ConteoCiclicoOkResponse(
+        mensaje=f"Conteo de '{producto.nombre}' verificado y guardado correctamente.",
+        sku=producto.sku,
+        nombre_producto=producto.nombre,
+        stock_verificado_vitrina=stock_vitrina,
+        stock_verificado_bodega=stock_bodega,
+        stock_verificado_total=stock_total,
+        ultimo_conteo_at=ahora,
+        anomalias_cerradas=anomalias_cerradas,
+        log_registrado=log_registrado,
+    )

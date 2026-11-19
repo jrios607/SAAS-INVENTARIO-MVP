@@ -5,6 +5,7 @@ import {
   getStockAgrupado,
   declararMermaRapida,
   getHistorialMermas,
+  configurarLiquidacionSato,
   ProductoDetalleStock,
   MermaHistorialItem,
 } from "@/services/api";
@@ -109,6 +110,7 @@ export default function AjustesBodegaPage() {
 
   // Estado de envío y modal de éxito
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [liquidacionBusy, setLiquidacionBusy] = useState(false);
   const [mermaError, setMermaError] = useState<string | null>(null);
   const [isToastModalOpen, setIsToastModalOpen] = useState(false);
 
@@ -305,34 +307,69 @@ export default function AjustesBodegaPage() {
     if (!productoDetectado) return [];
     const activos = (productoDetectado.lotes || []).filter((l) => (l.stock || 0) > 0);
     return [...activos].sort((a, b) => {
-      if (!a.fecha_vencimiento && !b.fecha_vencimiento) return 0;
-      if (!a.fecha_vencimiento) return 1;
-      if (!b.fecha_vencimiento) return -1;
-      return a.fecha_vencimiento.localeCompare(b.fecha_vencimiento);
+      const fA = a.fecha_vencimiento && a.fecha_vencimiento !== "Sin vencimiento" ? a.fecha_vencimiento : "";
+      const fB = b.fecha_vencimiento && b.fecha_vencimiento !== "Sin vencimiento" ? b.fecha_vencimiento : "";
+      if (!fA && !fB) return 0;
+      if (!fA) return 1;
+      if (!fB) return -1;
+      return fA.localeCompare(fB);
     });
   }, [productoDetectado]);
 
   const infoLoteDetectado = useMemo(() => {
     if (!productoDetectado) {
       return {
+        satoId: null as string | null,
         loteCodigo: "Automático (vence primero)",
         fechaVencimiento: null as string | null,
+        diasRestantes: null as number | null,
         ubicacion: null as string | null,
         stockLote: 0,
         costoUnitario: 0,
+        enLiquidacion: false,
+        precioLiquidacion: null as number | null,
       };
     }
     const loteMasProximo = lotesOrdenadosFefo[0] || (productoDetectado.lotes || [])[0];
+    const tieneFecha =
+      loteMasProximo?.fecha_vencimiento &&
+      loteMasProximo.fecha_vencimiento !== "Sin vencimiento";
     return {
+      satoId: loteMasProximo?.sato_id || null,
       loteCodigo: loteMasProximo?.id_lote || `FEFO-${productoDetectado.sku}`,
-      fechaVencimiento: loteMasProximo?.fecha_vencimiento
-        ? loteMasProximo.fecha_vencimiento.slice(0, 10)
-        : null,
+      fechaVencimiento: tieneFecha ? loteMasProximo.fecha_vencimiento!.slice(0, 10) : null,
+      diasRestantes: loteMasProximo?.dias_restantes ?? null,
       ubicacion: loteMasProximo?.ubicacion || null,
       stockLote: loteMasProximo?.stock ?? (productoDetectado.stock_individual || 0),
       costoUnitario: productoDetectado.costo_unitario || 0,
+      enLiquidacion: Boolean(loteMasProximo?.en_liquidacion),
+      precioLiquidacion: loteMasProximo?.precio_liquidacion ?? null,
     };
   }, [productoDetectado, lotesOrdenadosFefo]);
+
+  const handleToggleLiquidacionLote = async () => {
+    if (!infoLoteDetectado.satoId || liquidacionBusy) return;
+    setLiquidacionBusy(true);
+    setMermaError(null);
+    try {
+      const activar = !infoLoteDetectado.enLiquidacion;
+      await configurarLiquidacionSato(infoLoteDetectado.satoId, {
+        en_liquidacion: activar,
+        descuento_pct: activar ? 30 : undefined,
+        motivo: activar
+          ? "Remate preventivo antes de registrar merma"
+          : "Retiro manual desde Registro de Merma",
+      });
+      await cargarDatos();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("bvcore:inventory-updated"));
+      }
+    } catch (err: any) {
+      setMermaError(err?.message || "No se pudo cambiar el estado de remate del lote.");
+    } finally {
+      setLiquidacionBusy(false);
+    }
+  };
 
   // Cantidad de mermas registradas hoy
   const registrosHoyCount = useMemo(() => {
@@ -692,6 +729,44 @@ export default function AjustesBodegaPage() {
                 ${infoLoteDetectado.costoUnitario.toLocaleString("es-CL")} c/u
               </span>
             </div>
+
+            {infoLoteDetectado.satoId &&
+              (infoLoteDetectado.diasRestantes === null ||
+                infoLoteDetectado.diasRestantes >= 0) && (
+                <div className="p-3 rounded-2xl bg-violet-50/70 border border-violet-200/90 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="text-violet-900">
+                    {infoLoteDetectado.enLiquidacion ? (
+                      <>
+                        <span className="font-extrabold">🏷️ Este lote ya está en Remate</span>
+                        {infoLoteDetectado.precioLiquidacion
+                          ? ` ($${infoLoteDetectado.precioLiquidacion.toLocaleString("es-CL")} CLP)`
+                          : ""}
+                      </>
+                    ) : (
+                      <span>
+                        ¿Aún está apto para venta? Pon este lote en{" "}
+                        <strong>Remate (-30%)</strong> antes de darlo de baja.
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={liquidacionBusy}
+                    onClick={handleToggleLiquidacionLote}
+                    className={`px-3 py-1.5 rounded-xl text-[11px] font-bold border transition cursor-pointer disabled:opacity-60 ${
+                      infoLoteDetectado.enLiquidacion
+                        ? "bg-white hover:bg-slate-100 text-slate-700 border-slate-300"
+                        : "bg-violet-600 hover:bg-violet-700 text-white border-violet-700 shadow-2xs"
+                    }`}
+                  >
+                    {liquidacionBusy
+                      ? "Guardando..."
+                      : infoLoteDetectado.enLiquidacion
+                      ? "Quitar remate"
+                      : "Poner en remate (-30%)"}
+                  </button>
+                </div>
+              )}
           </div>
 
           {/* Paso 2: Cantidad */}

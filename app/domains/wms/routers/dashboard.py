@@ -137,6 +137,13 @@ def get_dashboard_kpis(db: Session = Depends(get_db_read), user=Depends(get_curr
                     "fecha_vencimiento": sato.fecha_vencimiento.isoformat() if sato.fecha_vencimiento else None,
                     "dias_restantes": dias_rest,
                     "valor_riesgo_clp": valor_lote,
+                    "en_liquidacion": bool(getattr(sato, "en_liquidacion", False)),
+                    "precio_regular": int(precio_u or 0),
+                    "precio_liquidacion": (
+                        int(sato.precio_liquidacion)
+                        if getattr(sato, "precio_liquidacion", None) is not None
+                        else None
+                    ),
                 }
             )
 
@@ -208,6 +215,18 @@ def get_dashboard_kpis(db: Session = Depends(get_db_read), user=Depends(get_curr
         1
         for sku_p, s_min in productos_activos
         if int(stock_por_sku.get(sku_p, 0) or 0) < max(1, int(s_min or 5))
+    )
+
+    lotes_en_liquidacion_count = (
+        db.query(func.count(Sato.sato_id))
+        .filter(
+            Sato.tipo_sato == "PRODUCTO",
+            Sato.estado.in_(["Vitrina", "Bodega", "Bodega Recepcion"]),
+            Sato.cantidad > 0,
+            Sato.en_liquidacion.is_(True),
+        )
+        .scalar()
+        or 0
     )
 
     # 5. Top 5 Mermas de la Semana
@@ -284,6 +303,7 @@ def get_dashboard_kpis(db: Session = Depends(get_db_read), user=Depends(get_curr
             "skus_huerfanos_pendientes_count": int(skus_huerfanos_pendientes_count),
             "lotes_por_vencer_7d_count": int(lotes_riesgo_7d_count),
             "productos_bajo_minimo_count": int(productos_bajo_minimo_count),
+            "lotes_en_liquidacion_count": int(lotes_en_liquidacion_count),
         },
         "desempeno_mensual": desempeno_mensual,
     }

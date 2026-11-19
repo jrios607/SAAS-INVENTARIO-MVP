@@ -12,6 +12,25 @@ import {
   BodegaPatente,
   Producto,
 } from "@/services/api";
+import { useOfflineSync } from "@/hooks/useOfflineSync";
+
+type RecepcionQueuedAction =
+  | {
+      kind: "GS1";
+      barcodeText: string;
+      ubicacionId?: string;
+      modoIngreso: "AUTO" | "CAJAS" | "UNIDADES";
+      cantidadRecibida: number;
+      ean: string;
+    }
+  | {
+      kind: "LPN";
+      destino: string;
+      lpn: string;
+      tipo_carga: string;
+      original_barcode: string;
+      ubicacion_id?: string;
+    };
 
 const Scanner = dynamic(
   () => import("@yudiel/react-qr-scanner").then((mod) => mod.Scanner),
@@ -73,6 +92,40 @@ export default function RecepcionBodegaPage() {
   const [cameraFeedback, setCameraFeedback] = useState("");
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
+
+  const submitRecepcionAction = useCallback(async (action: RecepcionQueuedAction) => {
+    if (action.kind === "GS1") {
+      return await recepcionarPallet(
+        action.barcodeText,
+        action.ubicacionId,
+        action.modoIngreso,
+        action.cantidadRecibida
+      );
+    }
+    return await recepcionarLpn({
+      destino: action.destino,
+      lpn: action.lpn,
+      tipo_carga: action.tipo_carga,
+      original_barcode: action.original_barcode,
+      ubicacion_id: action.ubicacion_id,
+    });
+  }, []);
+
+  const {
+    isOnline,
+    isSyncing,
+    syncQueueSize,
+    lastSyncError,
+    clearSyncError,
+    registerAction: registerRecepcionOffline,
+    flushNow,
+  } = useOfflineSync<RecepcionQueuedAction>("bvcore_recepcion_ops", submitRecepcionAction, {
+    onSynced: (syncedCount) => {
+      setSuccessMsg(
+        `✓ Se sincronizaron ${syncedCount} recepción(es) pendiente(s) al recuperar señal.`
+      );
+    },
+  });
 
   // Guía de ayuda (Tour)
   const [isTourActive, setIsTourActive] = useState(false);
@@ -404,29 +457,53 @@ export default function RecepcionBodegaPage() {
     try {
       if (parsedResult.type === "GS1") {
         const finalBarcode = rebuildBarcode(parsedResult.data);
-        const resp = await recepcionarPallet(
-          finalBarcode,
-          parsedResult.data.ubicacion_id || undefined,
-          parsedResult.data.modo_ingreso || "AUTO",
-          parsedResult.data.cantidad_recibida || 1
-        );
-        const warnFrio = resp.advertencia_temperatura
-          ? ` (${resp.advertencia_temperatura})`
-          : "";
-        setSuccessMsg(
-          `${resp.mensaje || `Ingreso registrado para EAN ${parsedResult.data.ean}`}${warnFrio}`
-        );
+        const res = await registerRecepcionOffline({
+          kind: "GS1",
+          barcodeText: finalBarcode,
+          ubicacionId: parsedResult.data.ubicacion_id || undefined,
+          modoIngreso: parsedResult.data.modo_ingreso || "AUTO",
+          cantidadRecibida: parsedResult.data.cantidad_recibida || 1,
+          ean: parsedResult.data.ean,
+        });
+        if (res.offline) {
+          setSuccessMsg(
+            "Sin conexión: recepción guardada en cola local. Se subirá automáticamente al volver la señal."
+          );
+        } else {
+          const resp = res.result;
+          const warnFrio = resp?.advertencia_temperatura
+            ? ` (${resp.advertencia_temperatura})`
+            : "";
+          setSuccessMsg(
+            `${resp?.mensaje || `Ingreso registrado para EAN ${parsedResult.data.ean}`}${warnFrio}`
+          );
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("bvcore:inventory-updated"));
+          }
+        }
       } else if (parsedResult.type === "LPN") {
-        await recepcionarLpn({
+        const res = await registerRecepcionOffline({
+          kind: "LPN",
           destino: parsedResult.data.destino,
           lpn: parsedResult.data.lpn,
           tipo_carga: parsedResult.data.tipo_carga,
           original_barcode: parsedResult.original,
           ubicacion_id: parsedResult.data.ubicacion_id || undefined,
         });
-        setSuccessMsg(`Pallet consolidado registrado con éxito (LPN: ${parsedResult.data.lpn}).`);
+        if (res.offline) {
+          setSuccessMsg(
+            `Sin conexión: pallet consolidado (${parsedResult.data.lpn}) guardado en cola local.`
+          );
+        } else {
+          setSuccessMsg(
+            `Pallet consolidado registrado con éxito (LPN: ${parsedResult.data.lpn}).`
+          );
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("bvcore:inventory-updated"));
+          }
+        }
       }
-      setTimeout(() => handleReset(), 2500);
+      setTimeout(() => handleReset(), 2200);
     } catch (err: any) {
       setErrorMsg(err.message || "Error al registrar la recepción en bodega.");
       setIsSubmitting(false);
@@ -557,6 +634,47 @@ export default function RecepcionBodegaPage() {
 
       {/* Main Content */}
       <main className="max-w-5xl w-full mx-auto p-6 space-y-6">
+        {(!isOnline || syncQueueSize > 0 || lastSyncError) && (
+          <div
+            className={`p-3.5 rounded-2xl border text-xs font-bold flex flex-wrap items-center justify-between gap-2 ${
+              !isOnline
+                ? "bg-amber-50 border-amber-300 text-amber-900"
+                : lastSyncError
+                ? "bg-rose-50 border-rose-200 text-rose-800"
+                : "bg-sky-50 border-sky-200 text-sky-900"
+            }`}
+          >
+            <span>
+              {!isOnline
+                ? `Modo sin conexión activo · ${syncQueueSize} recepción(es) en cola local esperando señal`
+                : lastSyncError
+                ? `Aviso de sincronización: ${lastSyncError}`
+                : `${syncQueueSize} recepción(es) pendientes de subir`}
+            </span>
+            <div className="flex items-center gap-2">
+              {isOnline && syncQueueSize > 0 && (
+                <button
+                  type="button"
+                  disabled={isSyncing}
+                  onClick={() => flushNow()}
+                  className="px-3 py-1 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-[11px] font-extrabold cursor-pointer disabled:opacity-60"
+                >
+                  {isSyncing ? "Sincronizando..." : "Sincronizar ahora"}
+                </button>
+              )}
+              {lastSyncError && (
+                <button
+                  type="button"
+                  onClick={clearSyncError}
+                  className="px-2.5 py-1 rounded-xl bg-white border border-rose-200 text-rose-700 text-[11px] font-bold cursor-pointer"
+                >
+                  Ocultar
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {errorMsg && (
           <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs font-semibold">
             {errorMsg}

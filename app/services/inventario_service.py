@@ -120,7 +120,10 @@ def fraccionar_sato(
         cantidad=cantidad_a_mover,
         estado="Vitrina",
         nivel_estante=nivel_estante or 1,
-        frente_posicion=frente_posicion or 1
+        frente_posicion=frente_posicion or 1,
+        en_liquidacion=bool(getattr(sato_padre, "en_liquidacion", False)),
+        precio_liquidacion=getattr(sato_padre, "precio_liquidacion", None),
+        liquidacion_at=getattr(sato_padre, "liquidacion_at", None),
     )
     
     db.add(sato_hijo)
@@ -205,7 +208,10 @@ def mover_a_vitrina(
             cantidad=cantidad_a_mover,
             estado="Vitrina",
             nivel_estante=nivel_estante or 1,
-            frente_posicion=frente_posicion or 1
+            frente_posicion=frente_posicion or 1,
+            en_liquidacion=bool(getattr(sato, "en_liquidacion", False)),
+            precio_liquidacion=getattr(sato, "precio_liquidacion", None),
+            liquidacion_at=getattr(sato, "liquidacion_at", None),
         )
         db.add(sato_vitrina)
         db.flush()
@@ -351,7 +357,13 @@ def get_alertas_vencimiento(db: Session, dias_alerta: int = 7) -> dict:
             "dias_restantes": dias_restantes,
             "estado": sato.estado,
             "ubicacion_id": sato.ubicacion_id,
-            "cantidad": sato.cantidad
+            "cantidad": sato.cantidad,
+            "en_liquidacion": bool(getattr(sato, "en_liquidacion", False)),
+            "precio_liquidacion": (
+                int(sato.precio_liquidacion)
+                if getattr(sato, "precio_liquidacion", None) is not None
+                else None
+            ),
         })
         
     alertas.sort(key=lambda a: (a["dias_restantes"], str(a["sato_id"])))
@@ -634,3 +646,112 @@ def listar_historial_mermas(db: Session, limit: int = 50) -> List[MermaHistorial
         )
 
     return items
+
+
+def configurar_liquidacion_sato(
+    db: Session,
+    sato_id: uuid.UUID,
+    en_liquidacion: bool = True,
+    precio_liquidacion: int | None = None,
+    descuento_pct: int | None = None,
+    motivo: str | None = None,
+    user_id: int | None = None,
+) -> dict:
+    """
+    Marca o retira un lote (Sato) en estado 'En Liquidación / Remate' previo a la Merma,
+    usando bloqueo pesimista `.with_for_update()` y sin alterar `Sato.estado` para que el
+    stock siga siendo vendible en vitrina/bodega mediante FEFO y POS externo.
+    """
+    sato = db.query(Sato).filter(Sato.sato_id == sato_id).with_for_update().first()
+    if not sato:
+        raise LookupError("Lote (SATO) no encontrado.")
+
+    if sato.tipo_sato == "CONTENEDOR":
+        raise InventarioError(
+            "No se puede poner en liquidación un contenedor (LPN). Selecciona un lote de producto."
+        )
+
+    if sato.estado not in ("Vitrina", "Bodega", "Bodega Recepcion") or (sato.cantidad or 0) <= 0:
+        raise InventarioError(
+            f"Solo se pueden gestionar en liquidación lotes con stock activo (estado actual: {sato.estado}, cantidad: {sato.cantidad or 0})."
+        )
+
+    producto = (
+        db.query(Catalogo_Producto)
+        .filter(Catalogo_Producto.sku == sato.sku)
+        .first()
+    )
+    precio_regular = int(producto.precio or 0) if producto else 0
+    lote_label = sato.lote or f"SATO-{str(sato.sato_id)[:8].upper()}"
+
+    if en_liquidacion:
+        if sato.fecha_vencimiento and sato.fecha_vencimiento < date.today():
+            raise InventarioError(
+                f"El lote '{lote_label}' ya está vencido ({sato.fecha_vencimiento}) y no puede ofrecerse en liquidación. Regístralo como merma."
+            )
+
+        precio_final: int | None = None
+        if precio_liquidacion is not None:
+            if precio_liquidacion <= 0:
+                raise InventarioError("El precio de liquidación debe ser mayor a 0.")
+            precio_final = int(precio_liquidacion)
+        elif descuento_pct is not None:
+            if not (1 <= descuento_pct <= 90):
+                raise InventarioError("El porcentaje de descuento debe estar entre 1% y 90%.")
+            if precio_regular > 0:
+                precio_final = max(1, round(precio_regular * (100 - descuento_pct) / 100))
+        else:
+            if precio_regular > 0:
+                precio_final = max(1, round(precio_regular * 0.70))
+
+        ahora = datetime.now(timezone.utc)
+        sato.en_liquidacion = True
+        sato.precio_liquidacion = precio_final
+        sato.liquidacion_at = ahora
+
+        motivo_txt = motivo.strip() if motivo and motivo.strip() else "Próximo a vencer / Remate rápido"
+        precio_txt = (
+            f"Precio remate: ${precio_final} CLP (regular: ${precio_regular} CLP)"
+            if precio_final is not None
+            else "Sin precio referencial definido"
+        )
+        log = Log_Transaccional(
+            tenant_id=sato.tenant_id,
+            sato_id=sato.sato_id,
+            usuario_id=user_id,
+            accion="MARCADO_LIQUIDACION",
+            detalles=f"Lote {lote_label} ({sato.cantidad} un) puesto en Remate. {precio_txt}. Motivo: {motivo_txt}.",
+        )
+        db.add(log)
+        mensaje = f"Lote '{lote_label}' marcado en Remate exitosamente."
+    else:
+        sato.en_liquidacion = False
+        sato.precio_liquidacion = None
+        sato.liquidacion_at = None
+
+        motivo_txt = motivo.strip() if motivo and motivo.strip() else "Retiro manual de remate"
+        log = Log_Transaccional(
+            tenant_id=sato.tenant_id,
+            sato_id=sato.sato_id,
+            usuario_id=user_id,
+            accion="RETIRO_LIQUIDACION",
+            detalles=f"Lote {lote_label} ({sato.cantidad} un) retirado de Remate. Motivo: {motivo_txt}.",
+        )
+        db.add(log)
+        mensaje = f"Lote '{lote_label}' retirado de Remate."
+
+    db.flush()
+
+    return {
+        "mensaje": mensaje,
+        "sato_id": str(sato.sato_id),
+        "sku": sato.sku or "",
+        "lote": sato.lote,
+        "estado": sato.estado,
+        "cantidad": int(sato.cantidad or 0),
+        "en_liquidacion": bool(sato.en_liquidacion),
+        "precio_regular": precio_regular,
+        "precio_liquidacion": sato.precio_liquidacion,
+        "liquidacion_at": sato.liquidacion_at,
+        "ubicacion_id": sato.ubicacion_id,
+    }

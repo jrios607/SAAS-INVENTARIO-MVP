@@ -148,6 +148,11 @@ class Sato(Base):
     barcode_original = Column(String, nullable=True)
     
     estado = Column(String, nullable=False, default="Bodega")
+
+    # Estado ortogonal de Liquidación / Remate pre-merma (preserva vendibilidad FEFO)
+    en_liquidacion = Column(Boolean, nullable=False, default=False)
+    precio_liquidacion = Column(Integer, nullable=True)
+    liquidacion_at = Column(DateTime, nullable=True)
     
     # Relación ORM padre ↔ hijos
     hijos = relationship("Sato", backref="padre", remote_side=[sato_id], lazy="select")

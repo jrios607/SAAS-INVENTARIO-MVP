@@ -6,16 +6,41 @@ import {
   getPatentesStrict,
   moverSatoAVitrina,
   declararMermaRapida,
+  confirmarConteoCiclicoOk,
   StockAgrupadoFamilia,
   ProductoDetalleStock,
   LoteDetalleFEFO,
   Patente,
 } from "@/services/api";
+import { useOfflineSync } from "@/hooks/useOfflineSync";
 
 interface ProductoEncontrado extends ProductoDetalleStock {
   loteBodegaFefo?: LoteDetalleFEFO;
   patenteDestino?: string;
 }
+
+type PistolaQueuedAction =
+  | {
+      kind: "REPONER";
+      satoId: string;
+      patenteId: string;
+      cantidad: number;
+      sku: string;
+      nombre: string;
+    }
+  | {
+      kind: "MERMA";
+      sku: string;
+      nombre: string;
+      cantidad: number;
+      motivo: string;
+    }
+  | {
+      kind: "CONTEO_OK";
+      sku: string;
+      nombre: string;
+      stockTotal: number;
+    };
 
 export function ModoPistolaModal() {
   const [isOpen, setIsOpen] = useState(false);
@@ -79,6 +104,43 @@ export function ModoPistolaModal() {
       // silencioso
     }
   }, []);
+
+  const submitPistolaAction = useCallback(async (action: PistolaQueuedAction) => {
+    if (action.kind === "REPONER") {
+      return await moverSatoAVitrina(action.satoId, action.patenteId, 1, 1, action.cantidad);
+    }
+    if (action.kind === "MERMA") {
+      return await declararMermaRapida({
+        sku: action.sku,
+        cantidad: action.cantidad,
+        motivo: action.motivo,
+        origen: "VITRINA",
+      });
+    }
+    return await confirmarConteoCiclicoOk({
+      sku: action.sku,
+      origen: "MODO_PISTOLA",
+      resolver_anomalias: true,
+    });
+  }, []);
+
+  const {
+    isOnline,
+    isSyncing,
+    syncQueueSize,
+    lastSyncError,
+    clearSyncError,
+    registerAction,
+    flushNow,
+  } = useOfflineSync<PistolaQueuedAction>("bvcore_pistola_ops", submitPistolaAction, {
+    onSynced: (syncedCount) => {
+      cargarCatalogos();
+      setFeedbackMsg({
+        text: `✓ Se sincronizaron ${syncedCount} operación(es) pendientes guardadas sin señal.`,
+        type: "success",
+      });
+    },
+  });
 
   // Escuchar F2 o evento global para abrir/cerrar (soporta pre-carga de SKU vía detail.sku)
   useEffect(() => {
@@ -182,7 +244,7 @@ export function ModoPistolaModal() {
   );
 
   // Acción 1: Reponer a vitrina
-  const handleReponerVitrina = async () => {
+  const handleReponerVitrina = useCallback(async () => {
     if (!producto || isProcessing) return;
     if (!producto.loteBodegaFefo) {
       setFeedbackMsg({
@@ -198,20 +260,29 @@ export function ModoPistolaModal() {
         cantidadAccion,
         producto.loteBodegaFefo.stock || cantidadAccion
       );
-      await moverSatoAVitrina(
-        producto.loteBodegaFefo.sato_id,
-        producto.patenteDestino || "GOND-01",
-        1,
-        1,
-        cant
-      );
-      setFeedbackMsg({
-        text: `✓ ¡Listo! Se repusieron ${cant} un de "${producto.nombre}" en Vitrina (${producto.patenteDestino || "Góndola"}).`,
-        type: "success",
+      const res = await registerAction({
+        kind: "REPONER",
+        satoId: producto.loteBodegaFefo.sato_id,
+        patenteId: producto.patenteDestino || "GOND-01",
+        cantidad: cant,
+        sku: producto.sku,
+        nombre: producto.nombre,
       });
-      await cargarCatalogos();
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("bvcore:inventory-updated"));
+
+      if (res.offline) {
+        setFeedbackMsg({
+          text: `Sin conexión: reposición de ${cant} un de "${producto.nombre}" guardada en cola local. Se subirá al recuperar señal.`,
+          type: "info",
+        });
+      } else {
+        setFeedbackMsg({
+          text: `✓ ¡Listo! Se repusieron ${cant} un de "${producto.nombre}" en Vitrina (${producto.patenteDestino || "Góndola"}).`,
+          type: "success",
+        });
+        await cargarCatalogos();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("bvcore:inventory-updated"));
+        }
       }
       setProducto(null);
       setScanCode("");
@@ -224,26 +295,35 @@ export function ModoPistolaModal() {
     } finally {
       setIsProcessing(false);
     }
-  };
+  }, [producto, isProcessing, cantidadAccion, registerAction, cargarCatalogos]);
 
   // Acción 2: Registrar Merma
-  const handleRegistrarMerma = async () => {
+  const handleRegistrarMerma = useCallback(async () => {
     if (!producto || isProcessing) return;
     setIsProcessing(true);
     try {
-      const resp = await declararMermaRapida({
+      const res = await registerAction({
+        kind: "MERMA",
         sku: producto.sku,
+        nombre: producto.nombre,
         cantidad: cantidadAccion,
         motivo: "Merma en sala / pistola rápida",
-        origen: "VITRINA",
       });
-      setFeedbackMsg({
-        text: `✓ Merma registrada: -${resp.cantidad_registrada} un de "${producto.nombre}" ($${resp.valor_merma_clp.toLocaleString("es-CL")} CLP).`,
-        type: "success",
-      });
-      await cargarCatalogos();
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("bvcore:inventory-updated"));
+      if (res.offline) {
+        setFeedbackMsg({
+          text: `Sin conexión: merma de ${cantidadAccion} un de "${producto.nombre}" guardada en cola local.`,
+          type: "info",
+        });
+      } else {
+        const resp = res.result;
+        setFeedbackMsg({
+          text: `✓ Merma registrada: -${resp?.cantidad_registrada ?? cantidadAccion} un de "${producto.nombre}" ($${Number(resp?.valor_merma_clp ?? 0).toLocaleString("es-CL")} CLP).`,
+          type: "success",
+        });
+        await cargarCatalogos();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("bvcore:inventory-updated"));
+        }
       }
       setProducto(null);
       setScanCode("");
@@ -256,19 +336,48 @@ export function ModoPistolaModal() {
     } finally {
       setIsProcessing(false);
     }
-  };
+  }, [producto, isProcessing, cantidadAccion, registerAction, cargarCatalogos]);
 
-  // Acción 3: Confirmar conteo cíclico
-  const handleConfirmarConteo = () => {
-    if (!producto) return;
-    setFeedbackMsg({
-      text: `✓ Conteo OK: "${producto.nombre}" verificado (${producto.stock_individual} un totales).`,
-      type: "success",
-    });
-    setProducto(null);
-    setScanCode("");
-    setTimeout(() => inputRef.current?.focus(), 100);
-  };
+  // Acción 3: Confirmar conteo cíclico (persistido en backend + cola offline)
+  const handleConfirmarConteo = useCallback(async () => {
+    if (!producto || isProcessing) return;
+    setIsProcessing(true);
+    try {
+      const res = await registerAction({
+        kind: "CONTEO_OK",
+        sku: producto.sku,
+        nombre: producto.nombre,
+        stockTotal: producto.stock_individual,
+      });
+      if (res.offline) {
+        setFeedbackMsg({
+          text: `Sin conexión: Conteo OK de "${producto.nombre}" guardado en cola local.`,
+          type: "info",
+        });
+      } else {
+        const cerradas = res.result?.anomalias_cerradas || 0;
+        const extra = cerradas > 0 ? ` · ${cerradas} diferencia(s) cerrada(s)` : "";
+        setFeedbackMsg({
+          text: `✓ Conteo OK guardado: "${producto.nombre}" verificado (${producto.stock_individual} un totales)${extra}.`,
+          type: "success",
+        });
+        await cargarCatalogos();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("bvcore:inventory-updated"));
+        }
+      }
+      setProducto(null);
+      setScanCode("");
+      setTimeout(() => inputRef.current?.focus(), 100);
+    } catch (err: any) {
+      setFeedbackMsg({
+        text: err?.message || "No se pudo guardar el conteo cíclico.",
+        type: "error",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [producto, isProcessing, registerAction, cargarCatalogos]);
 
   // Atajos numéricos 1, 2, 3 cuando hay un producto seleccionado
   useEffect(() => {
@@ -294,7 +403,13 @@ export function ModoPistolaModal() {
 
     window.addEventListener("keydown", handleActionKeys);
     return () => window.removeEventListener("keydown", handleActionKeys);
-  }, [isOpen, producto, cantidadAccion]);
+  }, [
+    isOpen,
+    producto,
+    handleReponerVitrina,
+    handleRegistrarMerma,
+    handleConfirmarConteo,
+  ]);
 
   if (!isOpen) return null;
 
@@ -329,6 +444,48 @@ export function ModoPistolaModal() {
             ✕ Cerrar [Esc]
           </button>
         </div>
+
+        {/* Estado de Red / Cola Offline (solo visible sin señal o con pendientes) */}
+        {(!isOnline || syncQueueSize > 0 || lastSyncError) && (
+          <div
+            className={`p-2.5 rounded-2xl border text-[11px] font-bold flex flex-wrap items-center justify-between gap-2 ${
+              !isOnline
+                ? "bg-amber-50 border-amber-300 text-amber-900"
+                : lastSyncError
+                ? "bg-rose-50 border-rose-200 text-rose-800"
+                : "bg-sky-50 border-sky-200 text-sky-900"
+            }`}
+          >
+            <span>
+              {!isOnline
+                ? `Sin conexión · Guardado local activo (${syncQueueSize} en espera)`
+                : lastSyncError
+                ? `Aviso de sincronización: ${lastSyncError}`
+                : `${syncQueueSize} operación(es) pendientes de subir`}
+            </span>
+            <div className="flex items-center gap-2">
+              {isOnline && syncQueueSize > 0 && (
+                <button
+                  type="button"
+                  disabled={isSyncing}
+                  onClick={() => flushNow()}
+                  className="px-2.5 py-1 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-[10px] font-extrabold cursor-pointer disabled:opacity-60"
+                >
+                  {isSyncing ? "Subiendo..." : "Sincronizar ahora"}
+                </button>
+              )}
+              {lastSyncError && (
+                <button
+                  type="button"
+                  onClick={clearSyncError}
+                  className="px-2 py-1 rounded-lg bg-white border border-rose-200 text-rose-700 text-[10px] font-bold cursor-pointer"
+                >
+                  Ocultar
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Input de Lectura Automática + Lista de sugerencias en vivo */}
         <div className="space-y-2">

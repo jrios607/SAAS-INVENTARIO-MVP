@@ -5,7 +5,7 @@ import logging
 import os
 import re
 import uuid
-from datetime import date, timedelta
+from datetime import date, timedelta, timezone
 from threading import Lock
 from typing import Optional, List, Dict, Any
 from cachetools import TTLCache
@@ -558,6 +558,12 @@ def get_stock_agrupado(db: Session, incluir_inactivos: bool = False):
                 "ubicacion": ubicacion_label,
                 "estado_sato": s.estado,
                 "stock": s.cantidad or 0,
+                "en_liquidacion": bool(getattr(s, "en_liquidacion", False)),
+                "precio_liquidacion": (
+                    int(s.precio_liquidacion)
+                    if getattr(s, "precio_liquidacion", None) is not None
+                    else None
+                ),
             })
 
         es_ghost = (p.ean or "").startswith("GHOST-") or "PRODUCTO DESCONOCIDO" in (p.nombre or "")
@@ -607,6 +613,11 @@ def get_stock_agrupado(db: Session, incluir_inactivos: bool = False):
             "stock_bodega": stock_bodega,
             "proxima_fecha_vencimiento": proxima_fecha_str,
             "alerta_vencimiento": peor_alerta,
+            "ultimo_conteo_at": (
+                p.ultimo_conteo_at.replace(tzinfo=timezone.utc).isoformat()
+                if p.ultimo_conteo_at and p.ultimo_conteo_at.tzinfo is None
+                else (p.ultimo_conteo_at.isoformat() if p.ultimo_conteo_at else None)
+            ),
             "lotes": lotes_detalle,
         })
 

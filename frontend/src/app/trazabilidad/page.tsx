@@ -70,6 +70,14 @@ const ACTION_META: Record<string, ActionMeta> = {
     label: "Salida por Picking",
     badgeClass: "bg-indigo-50 text-indigo-700 border-indigo-200",
   },
+  MARCADO_LIQUIDACION: {
+    label: "Puesto en Remate",
+    badgeClass: "bg-violet-50 text-violet-700 border-violet-200",
+  },
+  RETIRO_LIQUIDACION: {
+    label: "Retirado de Remate",
+    badgeClass: "bg-slate-100 text-slate-700 border-slate-300",
+  },
 };
 
 interface TourStep {

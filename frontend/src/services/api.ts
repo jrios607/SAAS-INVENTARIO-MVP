@@ -127,6 +127,8 @@ export interface LoteDetalleFEFO {
   ubicacion: string;
   estado_sato: string;
   stock: number;
+  en_liquidacion?: boolean;
+  precio_liquidacion?: number | null;
 }
 
 export interface ProductoDetalleStock {
@@ -156,6 +158,7 @@ export interface ProductoDetalleStock {
   stock_bodega?: number;
   proxima_fecha_vencimiento?: string | null;
   alerta_vencimiento?: string;
+  ultimo_conteo_at?: string | null;
   lotes?: LoteDetalleFEFO[];
 }
 
@@ -485,14 +488,12 @@ export async function recepcionarPallet(
     body: JSON.stringify({ barcode_text, ubicacion_id, modo_ingreso, cantidad_recibida }),
   });
   if (!res.ok) {
-    let errorMessage = res.statusText;
-    try {
-      const err = await res.json().catch(() => ({}));
-      if (err.detail) errorMessage = err.detail;
-    } catch (e) {
-      if (res.status === 409) errorMessage = "El pallet o producto ya fue recepcionado.";
-    }
-    throw new Error(errorMessage);
+    const err = await res.json().catch(() => ({}));
+    const fallback =
+      res.status === 409
+        ? "El pallet o producto ya fue recepcionado."
+        : res.statusText || "Error al recepcionar el bulto.";
+    throw new ApiHttpError(formatApiDetail(err?.detail, fallback), res.status);
   }
   return await res.json();
 }
@@ -509,14 +510,12 @@ export async function recepcionarLpn(lpn_data: { destino: string, lpn: string, t
     body: JSON.stringify(lpn_data),
   });
   if (!res.ok) {
-    let errorMessage = res.statusText;
-    try {
-      const err = await res.json().catch(() => ({}));
-      if (err.detail) errorMessage = err.detail;
-    } catch (e) {
-      if (res.status === 409) errorMessage = "El pallet consolidado (LPN) ya fue recepcionado.";
-    }
-    throw new Error(errorMessage);
+    const err = await res.json().catch(() => ({}));
+    const fallback =
+      res.status === 409
+        ? "El pallet consolidado (LPN) ya fue recepcionado."
+        : res.statusText || "Error al recepcionar pallet LPN.";
+    throw new ApiHttpError(formatApiDetail(err?.detail, fallback), res.status);
   }
   return await res.json();
 }
@@ -584,8 +583,11 @@ export async function moverSatoAVitrina(
     }),
   });
   if (!res.ok) {
-    const errorData = await res.json().catch(() => null);
-    throw new Error(errorData?.detail || res.statusText);
+    const err = await res.json().catch(() => ({}));
+    throw new ApiHttpError(
+      formatApiDetail(err?.detail, res.statusText || "Error al mover stock a vitrina."),
+      res.status
+    );
   }
   return await res.json();
 }
@@ -1478,6 +1480,9 @@ export interface DashboardRadarFefoItem {
   fecha_vencimiento?: string | null;
   dias_restantes: number;
   valor_riesgo_clp: number;
+  en_liquidacion?: boolean;
+  precio_regular?: number;
+  precio_liquidacion?: number | null;
 }
 
 export interface DashboardAlertasOperativas {
@@ -1485,6 +1490,7 @@ export interface DashboardAlertasOperativas {
   skus_huerfanos_pendientes_count: number;
   lotes_por_vencer_7d_count: number;
   productos_bajo_minimo_count: number;
+  lotes_en_liquidacion_count?: number;
 }
 
 export interface DashboardDesempenoMensualItem {
@@ -1593,6 +1599,89 @@ export async function getArbolSato(satoId: string): Promise<SatoArbolNode> {
     const err = await res.json().catch(() => ({}));
     throw new ApiHttpError(
       formatApiDetail(err?.detail, res.statusText || "Error al consultar árbol genealógico del SATO"),
+      res.status
+    );
+  }
+  return await res.json();
+}
+
+// ── Prioridad 2: Conteo Cíclico OK Persistente y Liquidación Pre-Merma ───────
+
+export interface ConteoCiclicoOkRequest {
+  sku: string;
+  origen?: "RUTINA_10MIN" | "MODO_PISTOLA" | "ANOMALIA_VITRINA";
+  observacion?: string;
+  resolver_anomalias?: boolean;
+}
+
+export interface ConteoCiclicoOkResponse {
+  mensaje: string;
+  sku: string;
+  nombre_producto: string;
+  stock_verificado_vitrina: number;
+  stock_verificado_bodega: number;
+  stock_verificado_total: number;
+  ultimo_conteo_at: string;
+  anomalias_cerradas: number;
+  log_registrado: boolean;
+}
+
+export async function confirmarConteoCiclicoOk(
+  payload: ConteoCiclicoOkRequest
+): Promise<ConteoCiclicoOkResponse> {
+  const res = await fetch(`${API_URL}/api/v1/abc/conteo-ok`, {
+    method: "POST",
+    headers: getHeaders(),
+    cache: "no-store",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new ApiHttpError(
+      formatApiDetail(err?.detail, res.statusText || "Error al confirmar conteo cíclico"),
+      res.status
+    );
+  }
+  return await res.json();
+}
+
+export interface LiquidacionSatoRequest {
+  en_liquidacion?: boolean;
+  precio_liquidacion?: number | null;
+  descuento_pct?: number | null;
+  motivo?: string | null;
+}
+
+export interface LiquidacionSatoResponse {
+  mensaje: string;
+  sato_id: string;
+  sku: string;
+  lote?: string | null;
+  estado: string;
+  cantidad: number;
+  en_liquidacion: boolean;
+  precio_regular: number;
+  precio_liquidacion?: number | null;
+  liquidacion_at?: string | null;
+}
+
+export async function configurarLiquidacionSato(
+  satoId: string,
+  payload: LiquidacionSatoRequest
+): Promise<LiquidacionSatoResponse> {
+  const res = await fetch(
+    `${API_URL}/api/v1/inventario/satos/${encodeURIComponent(satoId)}/liquidacion`,
+    {
+      method: "POST",
+      headers: getHeaders(),
+      cache: "no-store",
+      body: JSON.stringify(payload),
+    }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new ApiHttpError(
+      formatApiDetail(err?.detail, res.statusText || "Error al actualizar remate / liquidación"),
       res.status
     );
   }

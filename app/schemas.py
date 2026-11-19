@@ -199,6 +199,8 @@ class LoteDetalleFEFO(BaseModel):
     ubicacion: str
     estado_sato: str
     stock: int
+    en_liquidacion: bool = False
+    precio_liquidacion: Optional[int] = None
 
 
 class ProductoDetalleStock(BaseModel):
@@ -228,6 +230,7 @@ class ProductoDetalleStock(BaseModel):
     stock_bodega: int = 0
     proxima_fecha_vencimiento: Optional[str] = None
     alerta_vencimiento: str = "OK"
+    ultimo_conteo_at: Optional[str] = None
     lotes: List[LoteDetalleFEFO] = Field(default_factory=list)
 
 
@@ -393,6 +396,8 @@ class AlertaVencimientoItem(BaseModel):
     estado: str
     ubicacion_id: Optional[str] = None
     cantidad: int
+    en_liquidacion: bool = False
+    precio_liquidacion: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -828,6 +833,64 @@ class AnomaliaStockResponse(BaseModel):
     resolved_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ConteoCiclicoOkRequest(BaseModel):
+    sku: str = Field(..., min_length=1, max_length=64)
+    origen: Literal["RUTINA_10MIN", "MODO_PISTOLA", "ANOMALIA_VITRINA"] = "RUTINA_10MIN"
+    observacion: Optional[str] = Field(default=None, max_length=300)
+    resolver_anomalias: bool = True
+
+    @field_validator("sku")
+    @classmethod
+    def validate_sku(cls, v: str) -> str:
+        cleaned = _sanitize_text_field(v, "sku", allow_empty=False)
+        assert cleaned is not None
+        if not _SKU_CODE_RE.match(cleaned):
+            raise ValueError("El SKU contiene caracteres inválidos.")
+        return cleaned
+
+    @field_validator("observacion")
+    @classmethod
+    def validate_observacion(cls, v: Optional[str]) -> Optional[str]:
+        return _sanitize_text_field(v, "observacion", allow_empty=True)
+
+
+class ConteoCiclicoOkResponse(BaseModel):
+    mensaje: str
+    sku: str
+    nombre_producto: str
+    stock_verificado_vitrina: int
+    stock_verificado_bodega: int
+    stock_verificado_total: int
+    ultimo_conteo_at: datetime
+    anomalias_cerradas: int = 0
+    log_registrado: bool = False
+
+
+class LiquidacionSatoRequest(BaseModel):
+    en_liquidacion: bool = True
+    precio_liquidacion: Optional[int] = Field(default=None, ge=1, le=100_000_000)
+    descuento_pct: Optional[int] = Field(default=None, ge=1, le=90)
+    motivo: Optional[str] = Field(default=None, max_length=250)
+
+    @field_validator("motivo")
+    @classmethod
+    def validate_motivo(cls, v: Optional[str]) -> Optional[str]:
+        return _sanitize_text_field(v, "motivo", allow_empty=True)
+
+
+class LiquidacionSatoResponse(BaseModel):
+    mensaje: str
+    sato_id: str
+    sku: str
+    lote: Optional[str] = None
+    estado: str
+    cantidad: int
+    en_liquidacion: bool
+    precio_regular: int
+    precio_liquidacion: Optional[int] = None
+    liquidacion_at: Optional[datetime] = None
 
 
 # ─── Etapa 2: Flujos Rápidos en Origen (RF-01 PLU Interno y Merma 3 Toques) ─────

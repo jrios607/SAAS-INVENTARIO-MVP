@@ -7,6 +7,8 @@ import {
   getStockAgrupado,
   getAnomaliasStock,
   getOrphanSalesCodes,
+  confirmarConteoCiclicoOk,
+  configurarLiquidacionSato,
   DashboardKpisResponse,
   DashboardRadarFefoItem,
   StockAgrupadoFamilia,
@@ -14,6 +16,19 @@ import {
   AnomaliaStockResponse,
   OrphanCodeGroupItem,
 } from "@/services/api";
+
+function esMismoDiaSantiago(iso?: string | null): boolean {
+  if (!iso) return false;
+  const normalized = /[zZ]|[+-]\d{2}:\d{2}$/.test(iso) ? iso : `${iso}Z`;
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return false;
+  try {
+    const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santiago" });
+    return fmt.format(parsed) === fmt.format(new Date());
+  } catch {
+    return parsed.toISOString().slice(0, 10) === new Date().toISOString().slice(0, 10);
+  }
+}
 
 type AlertType = "fefo_7d" | "bajo_minimo" | "anomalias" | "orphans";
 
@@ -58,6 +73,12 @@ export default function CentroDeInformacionPage() {
   // Rutina de 10 Minutos: Conteo Cíclico Diario y Excepciones
   const [conteosVerificados, setConteosVerificados] = useState<Record<string, boolean>>({});
   const [mostrarRutina10Min, setMostrarRutina10Min] = useState<boolean>(true);
+  const [conteoLoadingSku, setConteoLoadingSku] = useState<string | null>(null);
+
+  // Flujo En Liquidación / Remate pre-merma
+  const [liquidacionLoadingId, setLiquidacionLoadingId] = useState<string | null>(null);
+  const [liquidacionPickerId, setLiquidacionPickerId] = useState<string | null>(null);
+  const [descuentoElegido, setDescuentoElegido] = useState<number>(30);
 
   // Controles de visualización del gráfico (2.1 Punto 3 + Selector Barras/Torta)
   const [chartPeriod, setChartPeriod] = useState<"6m" | "4w">("6m");
@@ -414,6 +435,74 @@ export default function CentroDeInformacionPage() {
     setSelectedAlert((prev) => (prev === type ? null : type));
   };
 
+  const handleConfirmarConteoOk = useCallback(
+    async (
+      sku: string,
+      nombre: string,
+      origen: "RUTINA_10MIN" | "ANOMALIA_VITRINA" = "RUTINA_10MIN"
+    ) => {
+      if (conteoLoadingSku) return;
+      setConteoLoadingSku(sku);
+      try {
+        const resp = await confirmarConteoCiclicoOk({
+          sku,
+          origen,
+          resolver_anomalias: true,
+        });
+        setConteosVerificados((prev) => ({
+          ...prev,
+          [sku]: true,
+        }));
+        await loadAllData(false);
+        const extra =
+          resp.anomalias_cerradas > 0
+            ? ` (${resp.anomalias_cerradas} diferencia(s) cerrada(s))`
+            : "";
+        showToast(`Stock de "${nombre}" verificado y guardado.${extra}`);
+      } catch (err: any) {
+        showToast(err?.message || "No se pudo guardar el conteo cíclico.");
+      } finally {
+        setConteoLoadingSku(null);
+      }
+    },
+    [conteoLoadingSku, loadAllData, showToast]
+  );
+
+  const handleConfigurarLiquidacion = useCallback(
+    async (
+      item: DashboardRadarFefoItem,
+      enLiquidacion: boolean,
+      descuentoPct?: number
+    ) => {
+      if (liquidacionLoadingId) return;
+      setLiquidacionLoadingId(item.sato_id);
+      try {
+        const resp = await configurarLiquidacionSato(item.sato_id, {
+          en_liquidacion: enLiquidacion,
+          descuento_pct: enLiquidacion ? descuentoPct ?? 30 : undefined,
+          motivo: enLiquidacion
+            ? `Remate por vencimiento próximo (${item.dias_restantes}d)`
+            : "Retiro manual desde Centro de Información",
+        });
+        setLiquidacionPickerId(null);
+        await loadAllData(false);
+        if (enLiquidacion) {
+          const precioTxt = resp.precio_liquidacion
+            ? ` a $${resp.precio_liquidacion.toLocaleString("es-CL")} CLP`
+            : "";
+          showToast(`"${item.nombre_producto}" (Lote ${item.lote}) puesto en remate${precioTxt}.`);
+        } else {
+          showToast(`"${item.nombre_producto}" (Lote ${item.lote}) retirado de remate.`);
+        }
+      } catch (err: any) {
+        showToast(err?.message || "No se pudo actualizar el remate del lote.");
+      } finally {
+        setLiquidacionLoadingId(null);
+      }
+    },
+    [liquidacionLoadingId, loadAllData, showToast]
+  );
+
   return (
     <div className="flex-1 flex flex-col min-w-0">
       {/* Overlay de la Guía de Ayuda (Tour Guiado) */}
@@ -656,7 +745,10 @@ export default function CentroDeInformacionPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                 {itemsRutina10Min.map((prod) => {
-                  const yaVerificado = conteosVerificados[prod.sku];
+                  const yaVerificado =
+                    Boolean(conteosVerificados[prod.sku]) ||
+                    esMismoDiaSantiago(prod.ultimo_conteo_at);
+                  const estaGuardando = conteoLoadingSku === prod.sku;
                   return (
                     <div
                       key={prod.sku}
@@ -682,7 +774,7 @@ export default function CentroDeInformacionPage() {
                           </span>
                         </div>
                         <span className="text-[11px] text-slate-400 block mt-0.5 truncate">
-                          SKU: {prod.sku} · {prod.familia}
+                          Código: {prod.sku} · {prod.familia}
                         </span>
                       </div>
 
@@ -705,16 +797,13 @@ export default function CentroDeInformacionPage() {
                           <>
                             <button
                               type="button"
-                              onClick={() => {
-                                setConteosVerificados((prev) => ({
-                                  ...prev,
-                                  [prod.sku]: true,
-                                }));
-                                showToast(`Stock de "${prod.nombre}" verificado correctamente.`);
-                              }}
-                              className="flex-1 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-2xs cursor-pointer"
+                              disabled={estaGuardando}
+                              onClick={() =>
+                                handleConfirmarConteoOk(prod.sku, prod.nombre, "RUTINA_10MIN")
+                              }
+                              className="flex-1 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-2xs cursor-pointer disabled:opacity-60"
                             >
-                              ✓ Stock OK
+                              {estaGuardando ? "Guardando..." : "✓ Stock OK"}
                             </button>
                             <button
                               type="button"
@@ -1011,7 +1100,7 @@ export default function CentroDeInformacionPage() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-rose-100 pb-3">
               <div>
                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-rose-600">
-                  Detalle de Alerta · Vencimiento FEFO (≤ 7 días)
+                  Detalle de Alerta · Próximos a vencer (≤ 7 días)
                 </span>
                 <h3 className="text-sm font-extrabold text-slate-900">
                   Lotes próximos a vencer o caducados ({radarFefo.length})
@@ -1045,21 +1134,36 @@ export default function CentroDeInformacionPage() {
                 Excelente: no hay lotes activos que venzan dentro de los próximos 7 días.
               </p>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-80 overflow-y-auto pr-1">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-96 overflow-y-auto pr-1">
                 {radarFefo.map((item) => {
                   const vencido = item.dias_restantes < 0;
                   const venceHoy = item.dias_restantes === 0;
+                  const enRemate = Boolean(item.en_liquidacion);
+                  const pickerAbierto = liquidacionPickerId === item.sato_id;
+                  const cargandoLiq = liquidacionLoadingId === item.sato_id;
                   return (
                     <div
                       key={item.sato_id}
-                      className="bg-white rounded-2xl p-3.5 border border-rose-200/80 shadow-2xs flex flex-col justify-between gap-2"
+                      className={`bg-white rounded-2xl p-3.5 border shadow-2xs flex flex-col justify-between gap-2.5 ${
+                        enRemate ? "border-violet-300 ring-1 ring-violet-200/70" : "border-rose-200/80"
+                      }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="text-xs font-extrabold text-slate-900">
-                            {item.nombre_producto}
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-xs font-extrabold text-slate-900 truncate">
+                              {item.nombre_producto}
+                            </span>
+                            {enRemate && (
+                              <span className="text-[10px] font-extrabold bg-violet-100 text-violet-800 border border-violet-300 px-2 py-0.5 rounded-md shrink-0">
+                                En Remate
+                                {item.precio_liquidacion
+                                  ? ` · $${item.precio_liquidacion.toLocaleString("es-CL")}`
+                                  : ""}
+                              </span>
+                            )}
                           </div>
-                          <div className="text-[11px] text-slate-500 font-medium">
+                          <div className="text-[11px] text-slate-500 font-medium mt-0.5">
                             Lote: <span className="font-bold text-slate-700">{item.lote}</span> ·{" "}
                             {item.nombre_ubicacion}
                           </div>
@@ -1087,6 +1191,76 @@ export default function CentroDeInformacionPage() {
                         <span className="font-bold text-rose-600">
                           Riesgo: ${item.valor_riesgo_clp.toLocaleString("es-CL")} CLP
                         </span>
+                      </div>
+
+                      {/* Acción Pre-Merma: Liquidación / Remate */}
+                      <div className="pt-2 border-t border-slate-100">
+                        {vencido ? (
+                          <Link
+                            href="/ajustes"
+                            className="inline-flex items-center justify-between w-full text-[11px] font-bold text-rose-700 hover:text-rose-800 bg-rose-50/70 hover:bg-rose-100/70 px-2.5 py-1.5 rounded-xl border border-rose-200 transition"
+                          >
+                            <span>Ya vencido · Dar de baja</span>
+                            <span>→</span>
+                          </Link>
+                        ) : enRemate ? (
+                          <button
+                            type="button"
+                            disabled={cargandoLiq}
+                            onClick={() => handleConfigurarLiquidacion(item, false)}
+                            className="w-full py-1.5 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition cursor-pointer disabled:opacity-60"
+                          >
+                            {cargandoLiq ? "Actualizando..." : "Quitar remate"}
+                          </button>
+                        ) : pickerAbierto ? (
+                          <div className="flex flex-wrap items-center gap-1.5 bg-violet-50/70 border border-violet-200 rounded-xl p-2">
+                            <span className="text-[10px] font-bold text-violet-800 mr-auto">
+                              Descuento:
+                            </span>
+                            {[20, 30, 50].map((pct) => (
+                              <button
+                                key={pct}
+                                type="button"
+                                onClick={() => setDescuentoElegido(pct)}
+                                className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold border cursor-pointer transition ${
+                                  descuentoElegido === pct
+                                    ? "bg-violet-600 text-white border-violet-700"
+                                    : "bg-white text-violet-800 border-violet-200 hover:bg-violet-100"
+                                }`}
+                              >
+                                -{pct}%
+                              </button>
+                            ))}
+                            <button
+                              type="button"
+                              disabled={cargandoLiq}
+                              onClick={() =>
+                                handleConfigurarLiquidacion(item, true, descuentoElegido)
+                              }
+                              className="px-2.5 py-1 rounded-lg bg-violet-700 hover:bg-violet-800 text-white text-[10px] font-extrabold cursor-pointer disabled:opacity-60"
+                            >
+                              {cargandoLiq ? "..." : "Confirmar"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setLiquidacionPickerId(null)}
+                              className="px-1.5 py-1 text-[10px] font-bold text-slate-500 hover:text-slate-700 cursor-pointer"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDescuentoElegido(30);
+                              setLiquidacionPickerId(item.sato_id);
+                            }}
+                            className="w-full py-1.5 px-2.5 rounded-xl bg-violet-50 hover:bg-violet-100 text-violet-800 border border-violet-200 text-[11px] font-bold transition cursor-pointer"
+                          >
+                            🏷️ Poner en remate (evitar merma)
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -1213,32 +1387,51 @@ export default function CentroDeInformacionPage() {
               </p>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-1">
-                {anomaliasList.map((anom) => (
-                  <div
-                    key={anom.id}
-                    className="bg-white rounded-2xl p-3.5 border border-rose-200/80 shadow-2xs flex flex-col justify-between gap-2"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="text-xs font-extrabold text-slate-900">
-                          {anom.nombre_producto || anom.sku}
+                {anomaliasList.map((anom) => {
+                  const cerrando = conteoLoadingSku === anom.sku;
+                  return (
+                    <div
+                      key={anom.id}
+                      className="bg-white rounded-2xl p-3.5 border border-rose-200/80 shadow-2xs flex flex-col justify-between gap-2.5"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="text-xs font-extrabold text-slate-900">
+                            {anom.nombre_producto || anom.sku}
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            Ubicación: <strong className="text-slate-700">{anom.ubicacion_id || "Sala"}</strong>
+                            {anom.referencia_ticket ? ` · Boleta: ${anom.referencia_ticket}` : ""}
+                          </div>
                         </div>
-                        <div className="text-[11px] text-slate-500">
-                          Ubicación: <strong className="text-slate-700">{anom.ubicacion_id}</strong>
-                          {anom.referencia_ticket ? ` · Boleta: ${anom.referencia_ticket}` : ""}
-                        </div>
+                        <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-lg bg-rose-600 text-white border border-rose-700 shadow-xs shrink-0">
+                          Déficit: {anom.unidades_deficit} unid.
+                        </span>
                       </div>
-                      <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-lg bg-rose-600 text-white border border-rose-700 shadow-xs shrink-0">
-                        Déficit: {anom.unidades_deficit} unid.
-                      </span>
+                      {anom.detalles && (
+                        <p className="text-[11px] text-slate-600 bg-slate-50 rounded-xl px-2.5 py-1.5 border border-slate-100">
+                          {anom.detalles}
+                        </p>
+                      )}
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          disabled={cerrando}
+                          onClick={() =>
+                            handleConfirmarConteoOk(
+                              anom.sku,
+                              anom.nombre_producto || anom.sku,
+                              "ANOMALIA_VITRINA"
+                            )
+                          }
+                          className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition shadow-2xs cursor-pointer disabled:opacity-60"
+                        >
+                          {cerrando ? "Cerrando..." : "✓ Verificar y cerrar"}
+                        </button>
+                      </div>
                     </div>
-                    {anom.detalles && (
-                      <p className="text-[11px] text-slate-600 bg-slate-50 rounded-xl px-2.5 py-1.5 border border-slate-100">
-                        {anom.detalles}
-                      </p>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

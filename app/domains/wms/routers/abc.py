@@ -35,11 +35,14 @@ from app.schemas import (
     AnomaliaStockResponse,
     ConfigConteoResponse,
     ConfigConteoUpdate,
+    ConteoCiclicoOkRequest,
+    ConteoCiclicoOkResponse,
     DiscrepanciaVitrinaRequest,
 )
 from app.services.abc_service import (
     actualizar_config_conteo,
     calcular_zonas_calientes_patentes,
+    confirmar_conteo_ciclico_ok,
     listar_anomalias_stock,
     obtener_config_conteo_lectura,
     recalcular_clasificacion_abc,
@@ -206,3 +209,39 @@ def get_anomalias_stock(
     except Exception:
         logger.exception("Error inesperado en get_anomalias_stock")
         raise HTTPException(status_code=500, detail="Error interno al listar anomalías de stock.")
+
+
+@router.post("/conteo-ok", response_model=ConteoCiclicoOkResponse)
+def post_conteo_ciclico_ok(
+    payload: ConteoCiclicoOkRequest,
+    db: Session = Depends(get_db),
+    user=Depends(require_role("Admin", "Supervisor", "Operario")),
+):
+    """
+    Persiste la verificación de conteo cíclico conforme (`✓ Stock OK` / `[3] Conteo OK`),
+    actualiza `ultimo_conteo_at`, registra auditoría en `Log_Transaccional` y cierra
+    anomalías abiertas del producto cuando corresponde.
+    """
+    user_id = getattr(user, "id", None) if user is not None else None
+    try:
+        resultado = confirmar_conteo_ciclico_ok(
+            db=db,
+            sku=payload.sku,
+            origen=payload.origen,
+            observacion=payload.observacion,
+            resolver_anomalias=payload.resolver_anomalias,
+            user_id=user_id,
+        )
+        db.commit()
+        _invalidar_ecosistema_abc()
+        return resultado
+    except LookupError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except Exception:
+        db.rollback()
+        logger.exception("Error inesperado en post_conteo_ciclico_ok")
+        raise HTTPException(status_code=500, detail="Error interno al confirmar conteo cíclico.")
