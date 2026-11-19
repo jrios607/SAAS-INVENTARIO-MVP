@@ -6,7 +6,7 @@ Este documento define las reglas inquebrantables de arquitectura, seguridad Mult
 
 ## 1. Protocolo del Agente Orquestador Principal
 
-Cuando el agente principal reciba tareas complejas, de múltiples capas o auditorías, debe actuar como **Orquestador** delegando el trabajo mediante `define_subagent` / `invoke_subagent` en los siguientes 8 perfiles especializados:
+Para tareas puntuales (fixes UI, ajustes de un endpoint, limpieza de archivos), el agente principal ejecuta directamente sin sobrecarga de coordinación. Cuando reciba **auditorías integrales o cambios complejos multi-capa en paralelo**, actúa como **Orquestador** delegando el trabajo bajo demanda mediante `define_subagent` / `invoke_subagent` en los siguientes perfiles especializados:
 
 ### 1.1 Perfiles de Arquitectura e Implementación
 1. **`wms-backend-architect` (Backend, CQRS, FEFO y Celery)**:
@@ -15,18 +15,18 @@ Cuando el agente principal reciba tareas complejas, de múltiples capas o audito
 2. **`tenant-security-auditor` (Aislamiento Multi-Tenant, Caché y Seguridad)**:
    - Responsable de [`app/core/security.py`](file:///c:/Users/Acer/OneDrive/Desktop/BVCore%20-%20Proyecto/app/core/security.py), [`app/core/tenant.py`](file:///c:/Users/Acer/OneDrive/Desktop/BVCore%20-%20Proyecto/app/core/tenant.py), hooks ORM en [`app/database.py`](file:///c:/Users/Acer/OneDrive/Desktop/BVCore%20-%20Proyecto/app/database.py) y validación HMAC/API-Key en integraciones.
    - Consulta: `multi-tenant-security-audit`.
-3. **`wms-frontend-specialist` (Next.js 14, Gemelo Digital 2D y Offline Sync)**:
-   - Responsable de [`frontend/src/`](file:///c:/Users/Acer/OneDrive/Desktop/BVCore%20-%20Proyecto/frontend/src), el lienzo 2D SVG/DOM nativo ([`frontend/src/app/patentes/page.tsx`](file:///c:/Users/Acer/OneDrive/Desktop/BVCore%20-%20Proyecto/frontend/src/app/patentes/page.tsx)), sincronización offline de picking ([`useOfflineSync.ts`](file:///c:/Users/Acer/OneDrive/Desktop/BVCore%20-%20Proyecto/frontend/src/hooks/useOfflineSync.ts)) y cliente HTTP ([`api.ts`](file:///c:/Users/Acer/OneDrive/Desktop/BVCore%20-%20Proyecto/frontend/src/services/api.ts)).
+3. **`wms-frontend-specialist` (Next.js 14, Gemelo Digital 2D y Modo Pistola)**:
+   - Responsable de [`frontend/src/`](file:///c:/Users/Acer/OneDrive/Desktop/BVCore%20-%20Proyecto/frontend/src), el lienzo 2D SVG/DOM nativo ([`frontend/src/app/patentes/page.tsx`](file:///c:/Users/Acer/OneDrive/Desktop/BVCore%20-%20Proyecto/frontend/src/app/patentes/page.tsx)), el **Modo Pistola F2** ([`ModoPistolaModal.tsx`](file:///c:/Users/Acer/OneDrive/Desktop/BVCore%20-%20Proyecto/frontend/src/components/layout/ModoPistolaModal.tsx)), sincronización offline ([`useOfflineSync.ts`](file:///c:/Users/Acer/OneDrive/Desktop/BVCore%20-%20Proyecto/frontend/src/hooks/useOfflineSync.ts)) y cliente HTTP ([`api.ts`](file:///c:/Users/Acer/OneDrive/Desktop/BVCore%20-%20Proyecto/frontend/src/services/api.ts)).
    - Consulta: `contract-sync-api-frontend`.
 4. **`qa-concurrency-tester` (Testing Automatizado y Condiciones de Carrera)**:
    - Responsable de verificar descuentos FEFO concurrentes, idempotencia de ventas externas/ASN y ausencia de fugas de datos entre tenants en [`tests/`](file:///c:/Users/Acer/OneDrive/Desktop/BVCore%20-%20Proyecto/tests).
 
-### 1.2 Perfiles de Automatización, Resiliencia y Verificación Rigurosa
-5. **`hardware-offline-tester` (Dispositivos, Cámara POS Express y Resiliencia Offline)**:
-   - Responsable de auditar la estabilidad de la cámara web/móvil con `@zxing/library`, lectura en ráfaga de pistolas láser/USB, almacenamiento en `IndexedDB` y reconciliación de picking cuando se interrumpe la conexión a internet.
-   - Garantiza que ninguna venta o picking se pierda ni duplique ante caídas de red o fallos de dispositivo.
+### 1.2 Perfiles de Automatización, Resiliencia y Verificación Rigurosa (`.agents/agents/`)
+5. **`hardware-offline-tester` (Escáner Recepción, Pistola F2 y Resiliencia Offline)**:
+   - Responsable de auditar la estabilidad de la cámara web/móvil con `@yudiel/react-qr-scanner` en [`recepcion/page.tsx`](file:///c:/Users/Acer/OneDrive/Desktop/BVCore%20-%20Proyecto/frontend/src/app/recepcion/page.tsx), lectura en ráfaga de pistolas láser/USB en [`ModoPistolaModal.tsx`](file:///c:/Users/Acer/OneDrive/Desktop/BVCore%20-%20Proyecto/frontend/src/components/layout/ModoPistolaModal.tsx) y la cola offline particionada por tenant en [`useOfflineSync.ts`](file:///c:/Users/Acer/OneDrive/Desktop/BVCore%20-%20Proyecto/frontend/src/hooks/useOfflineSync.ts).
+   - Garantiza que ninguna recepción, reposición o merma se pierda ni duplique ante caídas de red o fallos de dispositivo.
 6. **`chaos-fefo-auditor` (Caos Logístico, Mermas Extremas y Cadena de Frío)**:
-   - Responsable de inyectar escenarios adversos en el inventario: intentos de stock negativo, lotes caducados movidos a vitrina, violación de temperaturas (`CONGELADO` en góndola seca), particiones erróneas de SATO Padre $\rightarrow$ Hijos y mermas por merma/destrucción.
+   - Responsable de inyectar escenarios adversos en el inventario: intentos de stock negativo, lotes caducados movidos a vitrina, violación de temperaturas (`CONGELADO` en góndola seca), particiones erróneas de SATO Padre $\rightarrow$ Hijos y bajas por merma/destrucción.
    - Verifica que el motor de inventario lance excepciones controladas y jamás corrompa el balance de stock.
 7. **`load-stress-tester` (Pruebas de Carga, Saturación Omni-POS y Benchmark Gemelo 2D)**:
    - Responsable de simular ráfagas masivas de venta (50 a 100 tickets/segundo) evaluando el pool de conexiones PostgreSQL (Neon), la latencia de Redis y la estabilidad a 60/120 FPS del lienzo SVG al cargar cientos de góndolas.
@@ -39,7 +39,7 @@ Cuando el agente principal reciba tareas complejas, de múltiples capas o audito
 ## 2. Invariantes de Dominio y Arquitectura (Obligatorios)
 
 ### 2.1 Sin POS Caja Propio — Integración Omni-POS
-- **SG-BVC NO incluye una terminal de caja propia.** Nunca recrear rutas `/pos` interactivas de cajero.
+- **SG-BVC NO incluye una terminal de caja propia.** Nunca recrear rutas `/pos` o `/pos-express` interactivas de cajero.
 - Toda salida de stock por venta proviene de **Puntos de Venta (POS) externos** a través de [`app/services/external_sales_service.py`](file:///c:/Users/Acer/OneDrive/Desktop/BVCore%20-%20Proyecto/app/services/external_sales_service.py) y los endpoints en [`app/domains/integration/routers/integration.py`](file:///c:/Users/Acer/OneDrive/Desktop/BVCore%20-%20Proyecto/app/domains/integration/routers/integration.py):
   - **POS con API Key**: `POST /api/v1/integration/sales/webhook` (`X-API-Key` + `Idempotency-Key`).
   - **POS sin API Key (Legacy)**: `POST /api/v1/integration/sales/import-file` (`.csv`, `.txt`, `.json`) y `POST /api/v1/integration/sales/import-batch`.

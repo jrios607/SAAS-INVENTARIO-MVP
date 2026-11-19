@@ -16,4 +16,4 @@ Auditor de ingeniería del caos para inventario, mermas, caducidades y cadena de
 
 ## Invariantes Obligatorios
 - Ninguna operación puede dejar `sato.cantidad < 0`.
-- Toda mercadería en estado `"Agotado"` o `"Merma"` debe quedar excluida de la ruta de picking y del buscador de stock vendible.
+- Toda mercadería en estado `"Agotado"` o `"Merma"` debe quedar excluida de la reposición a vitrina, descuentos Omni-POS y buscador de stock vendible.
