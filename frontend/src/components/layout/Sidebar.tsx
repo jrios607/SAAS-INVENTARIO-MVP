@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { DebugConsole } from "@/components/DebugConsole";
 import { OnboardingWizardModal } from "@/components/onboarding/OnboardingWizardModal";
 import {
@@ -10,6 +10,10 @@ import {
   getTenantSettings,
   getStockAgrupado,
   getDashboardKpis,
+  getStoredUserSession,
+  clearStoredAuthSession,
+  canUserManageAdminActions,
+  AuthUserSession,
   TenantSettingsResponse,
   DashboardAlertasOperativas,
 } from "@/services/api";
@@ -148,10 +152,21 @@ const SHOW_DEBUG_CONSOLE = process.env.NEXT_PUBLIC_SHOW_DEBUG === "true";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [tenantSettings, setTenantSettings] = useState<TenantSettingsResponse | null>(null);
   const [isWizardOpen, setIsWizardOpen] = useState<boolean>(false);
   const [catalogCount, setCatalogCount] = useState<number | null>(null);
   const [alertasOps, setAlertasOps] = useState<DashboardAlertasOperativas | null>(null);
+  const [userSession, setUserSession] = useState<AuthUserSession | null>(null);
+
+  useEffect(() => {
+    setUserSession(getStoredUserSession());
+    const onAuthChanged = () => {
+      setUserSession(getStoredUserSession());
+    };
+    window.addEventListener("bvcore:auth-changed", onAuthChanged);
+    return () => window.removeEventListener("bvcore:auth-changed", onAuthChanged);
+  }, []);
 
   const refreshSidebarIndicators = useCallback(() => {
     getStockAgrupado()
@@ -404,29 +419,75 @@ export function Sidebar() {
             </div>
           </button>
 
-          <button
-            type="button"
-            onClick={() => setIsWizardOpen(true)}
-            className="w-full h-12 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 flex items-center gap-3 px-3 transition shadow-2xs group cursor-pointer"
-          >
-            <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                />
-              </svg>
+          {canUserManageAdminActions(userSession) && (
+            <button
+              type="button"
+              onClick={() => setIsWizardOpen(true)}
+              className="w-full h-12 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 flex items-center gap-3 px-3 transition shadow-2xs group cursor-pointer"
+            >
+              <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                </svg>
+              </div>
+              <span className="nav-label text-xs font-bold text-rose-700">Configuración</span>
+            </button>
+          )}
+
+          {/* Chip de Usuario / Rol y Sesión */}
+          <div className="w-full min-h-12 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center gap-2.5 px-2.5 py-2">
+            <div
+              title={
+                userSession
+                  ? `${userSession.usuario} (${userSession.rol})`
+                  : "Modo Local (Sin sesión activa)"
+              }
+              className="w-7 h-7 rounded-xl bg-gradient-to-tr from-rose-600 to-rose-500 text-white font-extrabold text-xs flex items-center justify-center flex-shrink-0 shadow-2xs"
+            >
+              {userSession ? userSession.usuario.slice(0, 1).toUpperCase() : "A"}
             </div>
-            <span className="nav-label text-xs font-bold text-rose-700">Configuración</span>
-          </button>
+            <div className="nav-label flex items-center justify-between w-full min-w-0 gap-1">
+              <div className="min-w-0">
+                <div className="text-[11px] font-extrabold text-slate-900 truncate">
+                  {userSession ? userSession.usuario : "Modo Local"}
+                </div>
+                <span className="inline-block text-[9px] font-bold px-1.5 py-0.2 rounded bg-rose-100 text-rose-700">
+                  {userSession ? userSession.rol : "Demo"}
+                </span>
+              </div>
+              {userSession ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearStoredAuthSession();
+                    router.push("/login");
+                  }}
+                  title="Cerrar sesión"
+                  className="text-[10px] font-bold text-slate-500 hover:text-rose-600 px-1.5 py-1 rounded-lg hover:bg-rose-50 transition cursor-pointer shrink-0"
+                >
+                  Salir
+                </button>
+              ) : (
+                <Link
+                  href="/login"
+                  className="text-[10px] font-bold text-rose-600 hover:text-rose-700 px-1.5 py-1 rounded-lg hover:bg-rose-50 transition shrink-0"
+                >
+                  Entrar
+                </Link>
+              )}
+            </div>
+          </div>
 
           {SHOW_DEBUG_CONSOLE && <DebugConsole />}
         </div>

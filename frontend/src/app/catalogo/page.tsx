@@ -9,6 +9,10 @@ import {
   importarCatalogoArchivo,
   ingresarStockCatalogo,
   generarCodigoInternoPlu,
+  getStoredUserSession,
+  canUserManageAdminActions,
+  canUserDeleteCritical,
+  AuthUserSession,
   Producto,
   LoteDetalleFEFO,
   CatalogoImportSummaryResponse,
@@ -195,6 +199,17 @@ export default function CatalogoPage() {
 
   // Estado del Tour Guiado ("¿Cómo funciona?")
   const [isTourActive, setIsTourActive] = useState(false);
+  const [userSession, setUserSession] = useState<AuthUserSession | null>(null);
+
+  useEffect(() => {
+    setUserSession(getStoredUserSession());
+    const onAuthChanged = () => setUserSession(getStoredUserSession());
+    window.addEventListener("bvcore:auth-changed", onAuthChanged);
+    return () => window.removeEventListener("bvcore:auth-changed", onAuthChanged);
+  }, []);
+
+  const canManageCatalog = canUserManageAdminActions(userSession);
+  const canDeleteCatalog = canUserDeleteCritical(userSession);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [spotlightStyle, setSpotlightStyle] = useState<React.CSSProperties>({
     top: 0,
@@ -776,21 +791,25 @@ export default function CatalogoPage() {
               ¿Cómo funciona?
             </button>
 
-            <button
-              type="button"
-              onClick={triggerImport}
-              className="px-4 py-2 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold transition shadow-sm cursor-pointer"
-            >
-              Subir archivo
-            </button>
+            {canManageCatalog && (
+              <>
+                <button
+                  type="button"
+                  onClick={triggerImport}
+                  className="px-4 py-2 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold transition shadow-sm cursor-pointer"
+                >
+                  Subir archivo
+                </button>
 
-            <button
-              type="button"
-              onClick={openNewProductModal}
-              className="px-4 py-2 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white text-xs font-bold transition shadow-md shadow-rose-200 active:scale-98 cursor-pointer"
-            >
-              + Nuevo Producto
-            </button>
+                <button
+                  type="button"
+                  onClick={openNewProductModal}
+                  className="px-4 py-2 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white text-xs font-bold transition shadow-md shadow-rose-200 active:scale-98 cursor-pointer"
+                >
+                  + Nuevo Producto
+                </button>
+              </>
+            )}
 
             {/* Avatar Administrador */}
             <div className="flex items-center pl-2 border-l border-slate-200">
@@ -1204,20 +1223,24 @@ export default function CatalogoPage() {
                                   >
                                     Imprimir etiqueta
                                   </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenEditModal(prod)}
-                                    className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold text-[11px] transition cursor-pointer"
-                                  >
-                                    Editar
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setProductToDelete(prod)}
-                                    className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold text-[11px] transition cursor-pointer"
-                                  >
-                                    Dar de baja
-                                  </button>
+                                  {canManageCatalog && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenEditModal(prod)}
+                                      className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold text-[11px] transition cursor-pointer"
+                                    >
+                                      Editar
+                                    </button>
+                                  )}
+                                  {canDeleteCatalog && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setProductToDelete(prod)}
+                                      className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold text-[11px] transition cursor-pointer"
+                                    >
+                                      Dar de baja
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             </td>

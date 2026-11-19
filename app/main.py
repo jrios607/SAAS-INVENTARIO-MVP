@@ -64,6 +64,11 @@ if not _ddl_synced_on_direct:
 setup_logger()
 logger = structlog.get_logger("sg-wms")
 
+if settings.AUTH_REQUIRED and settings.is_using_default_jwt_secret():
+    logger.warning(
+        "SEGURIDAD: AUTH_REQUIRED=True pero JWT_SECRET_KEY usa el valor de desarrollo por defecto. Configure un JWT_SECRET_KEY seguro (>=32 caracteres) en producción."
+    )
+
 # Configurar Rate Limiting
 limiter = Limiter(key_func=get_remote_address, default_limits=[settings.RATE_LIMIT_DEFAULT])
 
@@ -137,6 +142,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Registrar Routers
 app.include_router(auth.router)
+app.include_router(auth.router, prefix="/api/v1")
 app.include_router(bodega.router)
 app.include_router(vitrina.router)
 app.include_router(vitrina.router, prefix="/api/v1")

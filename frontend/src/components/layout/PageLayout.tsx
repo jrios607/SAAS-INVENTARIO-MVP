@@ -1,9 +1,15 @@
 "use client";
 
-import { ReactNode } from "react";
-import { usePathname } from "next/navigation";
+import { ReactNode, useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { ModoPistolaModal } from "./ModoPistolaModal";
+import {
+  getAuthStatus,
+  getStoredUserSession,
+  syncStoredUserProfile,
+  clearStoredAuthSession,
+} from "@/services/api";
 
 const LIGHT_PATHS = new Set([
   "/",
@@ -14,11 +20,59 @@ const LIGHT_PATHS = new Set([
   "/plano-bodega",
   "/recepcion",
   "/trazabilidad",
+  "/login",
 ]);
 
 export function PageLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const isLightPage = LIGHT_PATHS.has(pathname);
+  const isLoginPage = pathname === "/login";
+
+  useEffect(() => {
+    let active = true;
+
+    const verifyAuth = async () => {
+      const st = await getAuthStatus();
+      if (!active) return;
+
+      if (st.authenticated && st.usuario) {
+        syncStoredUserProfile({
+          id: st.usuario.id,
+          usuario: st.usuario.nombre,
+          rol: st.usuario.rol,
+          tenant_id: st.usuario.tenant_id,
+        });
+      } else if (!st.authenticated && getStoredUserSession()) {
+        clearStoredAuthSession();
+      }
+
+      if (st.auth_required && !st.authenticated && pathname !== "/login") {
+        router.replace("/login");
+      }
+    };
+
+    verifyAuth();
+
+    const handleUnauthorized = () => {
+      clearStoredAuthSession();
+      getAuthStatus().then((st) => {
+        if (st.auth_required && pathname !== "/login") {
+          router.replace("/login");
+        }
+      });
+    };
+
+    window.addEventListener("bvcore:auth-unauthorized", handleUnauthorized);
+    return () => {
+      active = false;
+      window.removeEventListener("bvcore:auth-unauthorized", handleUnauthorized);
+    };
+  }, [pathname, router]);
+
+  if (isLoginPage) {
+    return <div className="min-h-screen font-sans">{children}</div>;
+  }
 
   return (
     <div

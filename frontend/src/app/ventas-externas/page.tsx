@@ -8,6 +8,9 @@ import {
   getHistorialVentasExternas,
   getOrphanSalesCodes,
   resolveOrphanSalesCode,
+  getStoredUserSession,
+  canUserManageAdminActions,
+  AuthUserSession,
   getDetalleVentaExterna,
   revertirVentaExterna,
   getDashboardKpis,
@@ -99,6 +102,16 @@ export default function VentasExternasPage() {
   const [modality, setModality] = useState<1 | 2>(1);
   const [dashboardKpis, setDashboardKpis] = useState<DashboardKpisResponse | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [userSession, setUserSession] = useState<AuthUserSession | null>(null);
+
+  useEffect(() => {
+    setUserSession(getStoredUserSession());
+    const onAuthChanged = () => setUserSession(getStoredUserSession());
+    window.addEventListener("bvcore:auth-changed", onAuthChanged);
+    return () => window.removeEventListener("bvcore:auth-changed", onAuthChanged);
+  }, []);
+
+  const canManageSales = canUserManageAdminActions(userSession);
 
   // Modalidad 1: Carga de Archivos + Dry-Run
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -882,7 +895,11 @@ export default function VentasExternasPage() {
                     </div>
                   </div>
 
-                  {!dryRunResult ? (
+                  {!canManageSales ? (
+                    <div className="p-3 rounded-2xl bg-slate-100 border border-slate-200 text-slate-600 text-xs font-semibold text-center">
+                      Solo perfiles Administrador o Supervisor pueden importar archivos de ventas.
+                    </div>
+                  ) : !dryRunResult ? (
                     <button
                       type="button"
                       disabled={isDryRunning}
@@ -1227,7 +1244,7 @@ export default function VentasExternasPage() {
                                       </div>
                                     </div>
 
-                                    {ticketDetail.puede_revertirse && (
+                                    {ticketDetail.puede_revertirse && canManageSales && (
                                       <div className="flex items-center md:justify-end border-t md:border-t-0 md:border-l border-slate-100 pt-2 md:pt-0 md:pl-4">
                                         <button
                                           type="button"

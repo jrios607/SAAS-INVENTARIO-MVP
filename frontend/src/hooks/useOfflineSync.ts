@@ -107,6 +107,14 @@ export function useOfflineSync<T>(
             remaining.push(item, ...items.slice(i + 1));
             break;
           }
+          if (error instanceof ApiHttpError && error.status === 401) {
+            // Preservar la cola offline intacta si expiró el token hasta que el usuario vuelva a iniciar sesión
+            remaining.push(item, ...items.slice(i + 1));
+            setLastSyncError(
+              "Tu sesión expiró. Inicia sesión nuevamente para sincronizar las operaciones guardadas."
+            );
+            break;
+          }
           if (error instanceof ApiHttpError && error.status === 409) {
             // Idempotencia: ya estaba aplicado en servidor
             syncedCount += 1;

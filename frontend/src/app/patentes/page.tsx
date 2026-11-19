@@ -36,6 +36,9 @@ import {
   getSatosDisponibles,
   getProductos,
   getComplianceBatch,
+  getStoredUserSession,
+  canUserManageAdminActions,
+  AuthUserSession,
   getAlertasVencimiento,
   getZonasAbcPatentes,
   recalcularAbc,
@@ -249,6 +252,16 @@ export default function PatentesPage() {
 
   // ── Modo Edición y Construcción ──
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
+  const [userSession, setUserSession] = useState<AuthUserSession | null>(null);
+
+  useEffect(() => {
+    setUserSession(getStoredUserSession());
+    const onAuthChanged = () => setUserSession(getStoredUserSession());
+    window.addEventListener("bvcore:auth-changed", onAuthChanged);
+    return () => window.removeEventListener("bvcore:auth-changed", onAuthChanged);
+  }, []);
+
+  const canManageMap = canUserManageAdminActions(userSession);
   const [showAddMenu, setShowAddMenu] = useState<boolean>(false);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState<boolean>(false);
   const [muebleOriginalIdEdicion, setMuebleOriginalIdEdicion] = useState<string | null>(null);
@@ -1645,41 +1658,45 @@ export default function PatentesPage() {
               <RefreshCw size={14} />
             </button>
 
-            <button
-              type="button"
-              onClick={handleGuardarEnPostgreSQL}
-              disabled={isSavingBD || !hasUnsavedChanges}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-2xl text-xs font-bold transition-all shadow-md disabled:opacity-45 ${
-                hasUnsavedChanges
-                  ? "bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-600 text-white shadow-rose-200 ring-2 ring-rose-300"
-                  : "bg-gradient-to-r from-rose-600 to-rose-500 text-white shadow-rose-200"
-              }`}
-              title="Guardar los cambios de distribución de tu tienda"
-            >
-              <Save size={14} />
-              <span>{isSavingBD ? "Guardando..." : "Guardar cambios"}</span>
-            </button>
+            {canManageMap && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleGuardarEnPostgreSQL}
+                  disabled={isSavingBD || !hasUnsavedChanges}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-2xl text-xs font-bold transition-all shadow-md disabled:opacity-45 ${
+                    hasUnsavedChanges
+                      ? "bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-600 text-white shadow-rose-200 ring-2 ring-rose-300"
+                      : "bg-gradient-to-r from-rose-600 to-rose-500 text-white shadow-rose-200"
+                  }`}
+                  title="Guardar los cambios de distribución de tu tienda"
+                >
+                  <Save size={14} />
+                  <span>{isSavingBD ? "Guardando..." : "Guardar cambios"}</span>
+                </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                const nextMode = !isEditMode;
-                setIsEditMode(nextMode);
-                setShowAddMenu(false);
-                if (nextMode) {
-                  setCapaActiva("categorias");
-                  setShowFefoDrawer(false);
-                }
-              }}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-xs font-bold transition-all border ${
-                isEditMode
-                  ? "bg-amber-500 border-amber-600 text-white shadow-md shadow-amber-200"
-                  : "bg-white border-slate-200 text-slate-700 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200"
-              }`}
-            >
-              {isEditMode ? <PencilOff size={14} /> : <Pencil size={14} />}
-              <span>{isEditMode ? "Salir Edición" : "Modo Edición"}</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextMode = !isEditMode;
+                    setIsEditMode(nextMode);
+                    setShowAddMenu(false);
+                    if (nextMode) {
+                      setCapaActiva("categorias");
+                      setShowFefoDrawer(false);
+                    }
+                  }}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-xs font-bold transition-all border ${
+                    isEditMode
+                      ? "bg-amber-500 border-amber-600 text-white shadow-md shadow-amber-200"
+                      : "bg-white border-slate-200 text-slate-700 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200"
+                  }`}
+                >
+                  {isEditMode ? <PencilOff size={14} /> : <Pencil size={14} />}
+                  <span>{isEditMode ? "Salir Edición" : "Modo Edición"}</span>
+                </button>
+              </>
+            )}
 
             {isEditMode && (
               <>
@@ -2355,17 +2372,19 @@ export default function PatentesPage() {
                     Diagrama tu sala de ventas libremente añadiendo góndolas, vitrinas de frío e islas para monitorear su stock y vencimientos FEFO en tiempo real.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={() => {
-                    setIsEditMode(true);
-                    setShowAddMenu(true);
-                  }}
-                  className="w-full py-2.5 px-4 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-600 text-white font-bold text-xs rounded-2xl flex items-center justify-center gap-2 transition-all shadow-md shadow-rose-200"
-                >
-                  <Plus size={16} /> Activar Edición y Añadir Primer Mueble
-                </button>
+                {canManageMap && (
+                  <button
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={() => {
+                      setIsEditMode(true);
+                      setShowAddMenu(true);
+                    }}
+                    className="w-full py-2.5 px-4 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-600 text-white font-bold text-xs rounded-2xl flex items-center justify-center gap-2 transition-all shadow-md shadow-rose-200"
+                  >
+                    <Plus size={16} /> Activar Edición y Añadir Primer Mueble
+                  </button>
+                )}
               </div>
             </div>
           )}

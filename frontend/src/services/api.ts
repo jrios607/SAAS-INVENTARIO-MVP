@@ -6,10 +6,17 @@ const API_URL = getApiUrl();
 
 export class ApiHttpError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, suppressUnauthorizedEvent: boolean = false) {
     super(message);
     this.name = "ApiHttpError";
     this.status = status;
+    if (
+      status === 401 &&
+      !suppressUnauthorizedEvent &&
+      typeof window !== "undefined"
+    ) {
+      window.dispatchEvent(new CustomEvent("bvcore:auth-unauthorized"));
+    }
   }
 }
 
@@ -1686,6 +1693,164 @@ export async function configurarLiquidacionSato(
     );
   }
   return await res.json();
+}
+
+// ── Prioridad 3: Autenticación Multi-Tenant, Sesión y RBAC UI ────────────────
+
+export type UserRole = "Admin" | "Supervisor" | "Operario" | string;
+
+export interface AuthUserSession {
+  id?: number;
+  usuario: string;
+  rol: UserRole;
+  tenant_id: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  usuario: string;
+  rol: UserRole;
+  tenant_id: string;
+}
+
+export interface AuthStatusResponse {
+  auth_required: boolean;
+  authenticated: boolean;
+  usuario: {
+    id: number;
+    nombre: string;
+    rol: UserRole;
+    tenant_id: string;
+  } | null;
+}
+
+const AUTH_SESSION_STORAGE_KEY = "bvcore_user_session";
+
+export function getStoredUserSession(): AuthUserSession | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(AUTH_SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.usuario === "string" && typeof parsed.rol === "string") {
+      return parsed as AuthUserSession;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredAuthSession(token: string, session: AuthUserSession): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem("access_token", token);
+    localStorage.setItem("token", token);
+    if (session.tenant_id) {
+      localStorage.setItem("tenant_id", session.tenant_id);
+    }
+    localStorage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify(session));
+    window.dispatchEvent(new CustomEvent("bvcore:auth-changed", { detail: session }));
+  } catch {
+    // Ignorar errores de storage
+  }
+}
+
+export function syncStoredUserProfile(session: AuthUserSession): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (session.tenant_id) {
+      localStorage.setItem("tenant_id", session.tenant_id);
+    }
+    localStorage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify(session));
+    window.dispatchEvent(new CustomEvent("bvcore:auth-changed", { detail: session }));
+  } catch {
+    // Ignorar
+  }
+}
+
+export function clearStoredAuthSession(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("token");
+    localStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
+    window.dispatchEvent(new CustomEvent("bvcore:auth-changed", { detail: null }));
+  } catch {
+    // Ignorar
+  }
+}
+
+/**
+ * En modo desarrollo sin sesión activa (`session === null`), permite todas las acciones.
+ * Cuando hay un usuario autenticado, valida si tiene rol `Admin` o `Supervisor`.
+ */
+export function canUserManageAdminActions(session: AuthUserSession | null): boolean {
+  if (!session) return true;
+  return session.rol === "Admin" || session.rol === "Supervisor";
+}
+
+/**
+ * En modo desarrollo sin sesión activa (`session === null`), permite acciones críticas.
+ * Cuando hay un usuario autenticado, exige rol `Admin`.
+ */
+export function canUserDeleteCritical(session: AuthUserSession | null): boolean {
+  if (!session) return true;
+  return session.rol === "Admin";
+}
+
+export async function loginUsuario(payload: {
+  username: string;
+  password: string;
+  tenant_id?: string;
+}): Promise<TokenResponse> {
+  const cleanTenant = payload.tenant_id?.trim() || undefined;
+  const res = await fetch(`${API_URL}/api/v1/auth/login-json`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Bypass-Tunnel-Reminder": "true",
+      "ngrok-skip-browser-warning": "true",
+      ...(cleanTenant ? { "X-Tenant-ID": cleanTenant } : {}),
+    },
+    cache: "no-store",
+    body: JSON.stringify({
+      username: payload.username.trim(),
+      password: payload.password,
+      tenant_id: cleanTenant,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new ApiHttpError(
+      formatApiDetail(err?.detail, res.statusText || "No fue posible iniciar sesión."),
+      res.status,
+      true
+    );
+  }
+  const data: TokenResponse = await res.json();
+  setStoredAuthSession(data.access_token, {
+    usuario: data.usuario,
+    rol: data.rol,
+    tenant_id: data.tenant_id,
+  });
+  return data;
+}
+
+export async function getAuthStatus(): Promise<AuthStatusResponse> {
+  try {
+    const res = await fetch(`${API_URL}/api/v1/auth/status`, {
+      headers: getHeaders(),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      return { auth_required: false, authenticated: false, usuario: null };
+    }
+    return await res.json();
+  } catch {
+    return { auth_required: false, authenticated: false, usuario: null };
+  }
 }
 
 

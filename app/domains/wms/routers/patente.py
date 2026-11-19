@@ -13,6 +13,7 @@ from app.schemas import (
     StockPatenteResponse
 )
 from app.core.security import get_current_user, require_role
+from app.core.tenant import current_tenant_id
 from app.services.slotting_service import calcular_compliance_patente, get_compliance_batch
 from app.core.cache import (
     cache_get, cache_set,

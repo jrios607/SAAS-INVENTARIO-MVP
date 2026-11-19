@@ -1,3 +1,4 @@
+import bcrypt
 import hmac
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -11,14 +12,23 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.tenant import current_tenant_id
 
-# ── Hashing de passwords ──────────────────────────────────────
+# ── Hashing de passwords (compatible con bcrypt >= 4.1 / 5.0 y passlib) ─────
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    if not plain_password or not hashed_password:
+        return False
+    try:
+        pw_bytes = plain_password.encode("utf-8")[:72]
+        if hashed_password.startswith(("$2a$", "$2b$", "$2y$")):
+            return bcrypt.checkpw(pw_bytes, hashed_password.encode("utf-8"))
+        return pwd_context.verify(plain_password, hashed_password)
+    except Exception:
+        return False
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    pw_bytes = (password or "").encode("utf-8")[:72]
+    return bcrypt.hashpw(pw_bytes, bcrypt.gensalt()).decode("utf-8")
 
 # ── JWT ───────────────────────────────────────────────────────
 # auto_error=False: la obligatoriedad del token la decide AUTH_REQUIRED
