@@ -610,3 +610,218 @@ def test_04_contract_sentinel_etapa3_schemas():
         assert not missing_in_ts, (
             f"Drift detectado en {schema_name}: faltan en api.ts -> {missing_in_ts}"
         )
+
+
+def test_05_cuadratura_fefo_mas_de_6_y_bodega_unificada():
+    """
+    Verifica:
+      1. Si hay > 6 lotes venciendo <= 7d (ej. 8 lotes) y lotes a 12d, tanto los KPIs como
+         radar_fefo_items devuelven exactamente los 8 lotes <= 7d sin recorte arbitrario.
+      2. Los SATOs en Bodega sin ubicacion_id o en 'Bodega Recepcion' se incluyen en
+         /api/v1/mapa/bodega/ (cuadrando 100% con dashboard/kpis) y en /{recepcion}/stock.
+    """
+    client = TestClient(app)
+    db = RoutingSessionLocal()
+    try:
+        current_tenant_id.set(TENANT_MICRO)
+        cat = Categoria(tenant_id=TENANT_MICRO, nombre="Abarrotes")
+        db.add(cat)
+        db.flush()
+
+        prod = Catalogo_Producto(
+            tenant_id=TENANT_MICRO,
+            sku="SKU-CUAD-01",
+            nombre="Leche Cuadratura 1L",
+            ean="7809999000011",
+            categoria_id=cat.id,
+            costo_unitario=900,
+            precio=1350,
+            stock_minimo=5,
+            activo=True,
+        )
+        db.add(prod)
+        db.add(
+            Patente(
+                tenant_id=TENANT_MICRO,
+                id_patente="Bodega Recepción",
+                tipo_ubicacion="BODEGA_SECOS",
+                area_pasillo="ZONA RECEPCIÓN Y DESCARGA",
+                coordenada_x=1,
+                coordenada_y=1,
+                ancho=1,
+                largo=1,
+            )
+        )
+        db.add(
+            Patente(
+                tenant_id=TENANT_MICRO,
+                id_patente="RACK-1",
+                tipo_ubicacion="BODEGA_SECOS",
+                area_pasillo="Rack Secos 1",
+                coordenada_x=2,
+                coordenada_y=1,
+                ancho=1,
+                largo=1,
+            )
+        )
+        db.flush()
+
+        hoy = date.today()
+        # 8 lotes dentro de <= 7 días en Vitrina (suman 8 unidades)
+        for i in range(8):
+            db.add(
+                Sato(
+                    tenant_id=TENANT_MICRO,
+                    tipo_sato="PRODUCTO",
+                    sku="SKU-CUAD-01",
+                    lote=f"L-7D-{i}",
+                    cantidad=1,
+                    estado="Vitrina",
+                    fecha_vencimiento=hoy + timedelta(days=i - 1),
+                )
+            )
+        # 2 lotes fuera de 7 días (12 días, dentro de antigua ventana 14d) -> NO deben aparecer en alerta 7d
+        for j in range(2):
+            db.add(
+                Sato(
+                    tenant_id=TENANT_MICRO,
+                    tipo_sato="PRODUCTO",
+                    sku="SKU-CUAD-01",
+                    lote=f"L-12D-{j}",
+                    cantidad=1,
+                    estado="Vitrina",
+                    fecha_vencimiento=hoy + timedelta(days=12),
+                )
+            )
+
+        # Stock de bodega: 20 en RACK-1 + 12 sin ubicacion_id + 5 en "Bodega Recepcion" = 37
+        db.add(
+            Sato(
+                tenant_id=TENANT_MICRO,
+                tipo_sato="PRODUCTO",
+                sku="SKU-CUAD-01",
+                lote="L-RACK",
+                cantidad=20,
+                estado="Bodega",
+                ubicacion_id="RACK-1",
+                fecha_vencimiento=hoy + timedelta(days=60),
+            )
+        )
+        db.add(
+            Sato(
+                tenant_id=TENANT_MICRO,
+                tipo_sato="PRODUCTO",
+                sku="SKU-CUAD-01",
+                lote="L-SIN-UBIC",
+                cantidad=12,
+                estado="Bodega",
+                ubicacion_id=None,
+                fecha_vencimiento=hoy + timedelta(days=65),
+            )
+        )
+        db.add(
+            Sato(
+                tenant_id=TENANT_MICRO,
+                tipo_sato="PRODUCTO",
+                sku="SKU-CUAD-01",
+                lote="L-RECEP",
+                cantidad=5,
+                estado="Bodega Recepcion",
+                ubicacion_id=None,
+                fecha_vencimiento=hoy + timedelta(days=70),
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    r_kpi = client.get("/api/v1/dashboard/kpis", headers={"X-Tenant-ID": TENANT_MICRO})
+    assert r_kpi.status_code == 200
+    kpi = r_kpi.json()
+    assert kpi["lotes_riesgo_vencimiento_count"] == 8
+    assert kpi["alertas_operativas"]["lotes_por_vencer_7d_count"] == 8
+    assert len(kpi["radar_fefo_items"]) == 8
+    assert all(item["dias_restantes"] <= 7 for item in kpi["radar_fefo_items"])
+    assert kpi["stock_bodega_unidades"] == 37
+
+    r_mapa = client.get("/api/v1/mapa/bodega/", headers={"X-Tenant-ID": TENANT_MICRO})
+    assert r_mapa.status_code == 200
+    zonas = r_mapa.json()
+    assert sum(z["unidades"] for z in zonas) == 37
+
+    r_recep_stock = client.get(
+        "/api/v1/mapa/bodega/Bodega%20Recepci%C3%B3n/stock",
+        headers={"X-Tenant-ID": TENANT_MICRO},
+    )
+    assert r_recep_stock.status_code == 200
+    lotes_recep = r_recep_stock.json()
+    assert len(lotes_recep) == 2
+    assert sum(l["cantidad"] for l in lotes_recep) == 17
+
+
+def test_06_valorizacion_pos_con_precio_cero_usa_catalogo():
+    """
+    Si un POS envía precio_unitario=0, el motor debe valorizar usando el precio
+    del catálogo en lugar de guardar total_valorizado=0.
+    """
+    client = TestClient(app)
+    db = RoutingSessionLocal()
+    try:
+        current_tenant_id.set(TENANT_MICRO)
+        cat = Categoria(tenant_id=TENANT_MICRO, nombre="Bebidas")
+        db.add(cat)
+        db.flush()
+
+        db.add(
+            Catalogo_Producto(
+                tenant_id=TENANT_MICRO,
+                sku="SKU-PREC-01",
+                nombre="Jugo Natural 1L",
+                ean="7808888000011",
+                categoria_id=cat.id,
+                costo_unitario=1400,
+                precio=2500,
+                stock_minimo=5,
+                activo=True,
+            )
+        )
+        db.add(
+            Sato(
+                tenant_id=TENANT_MICRO,
+                tipo_sato="PRODUCTO",
+                sku="SKU-PREC-01",
+                lote="L-JUGO-01",
+                cantidad=10,
+                estado="Vitrina",
+                fecha_vencimiento=date.today() + timedelta(days=30),
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    r_sale = client.post(
+        "/api/v1/integration/sales/import-batch",
+        headers={"X-Tenant-ID": TENANT_MICRO},
+        json={
+            "pos_source": "BSALE_POS",
+            "tickets": [
+                {
+                    "external_ticket_id": "BOL-ZERO-01",
+                    "pos_source": "BSALE_POS",
+                    "items": [
+                        {"sku": "SKU-PREC-01", "cantidad": 3, "precio_unitario": 0}
+                    ],
+                }
+            ],
+        },
+    )
+    assert r_sale.status_code == 200
+    assert r_sale.json()["total_valorizado"] == 7500
+
+    r_hist = client.get(
+        "/api/v1/integration/sales/history",
+        headers={"X-Tenant-ID": TENANT_MICRO},
+    )
+    assert r_hist.status_code == 200
+    assert r_hist.json()[0]["total_valorizado"] == 7500

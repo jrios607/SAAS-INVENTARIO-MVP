@@ -153,8 +153,8 @@ def _parsear_fecha_venta_dt(timestamp_raw: Optional[str]) -> datetime:
 
 
 def _calcular_precio_efectivo(item: ExternalSaleItem, producto: Catalogo_Producto) -> int:
-    if item.precio_unitario is not None:
-        return max(0, int(item.precio_unitario))
+    if item.precio_unitario is not None and int(item.precio_unitario) > 0:
+        return int(item.precio_unitario)
     if producto.precio and producto.precio > 0:
         return int(producto.precio)
     return max(0, int(producto.costo_unitario or 0))

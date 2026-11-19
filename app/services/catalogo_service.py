@@ -221,12 +221,17 @@ def _crear_lote_sato_interno(
     if vence is None and controla_vencimiento:
         vence = date.today() + timedelta(days=int(dias_vida_util or 30))
     lote_final = (lote or "").strip() or f"L-CAT-{date.today().strftime('%y%m%d')}"
+    ubicacion_final = (ubicacion_id or "").strip() or None
+    if estado_norm == "Bodega" and not ubicacion_final:
+        from app.services.recepcion_service import resolver_ubicacion_bodega_default
+
+        ubicacion_final = resolver_ubicacion_bodega_default(db, None)
 
     nuevo_sato = Sato(
         tenant_id=tenant_id,
         tipo_sato="PRODUCTO",
         sku=sku,
-        ubicacion_id=(ubicacion_id or "").strip() or None,
+        ubicacion_id=ubicacion_final,
         lote=lote_final,
         fecha_elaboracion=date.today(),
         fecha_vencimiento=vence,

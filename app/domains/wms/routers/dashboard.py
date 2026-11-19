@@ -49,7 +49,6 @@ def _rango_dia_santiago_en_utc() -> tuple[datetime, datetime, datetime]:
 def get_dashboard_kpis(db: Session = Depends(get_db_read), user=Depends(get_current_user)):
     hoy = datetime.now().date()
     limite_vencimiento_7d = hoy + timedelta(days=7)
-    limite_radar_14d = hoy + timedelta(days=14)
 
     # 1. Ocupación Vitrina vs Bodega y Stock Total Activo
     ocupacion = (
@@ -81,7 +80,7 @@ def get_dashboard_kpis(db: Session = Depends(get_db_read), user=Depends(get_curr
         {"name": "Bodega", "value": stock_bodega},
     ]
 
-    # 2. Riesgo por Vencimiento FEFO (<= 7 días) y Radar FEFO (<= 14 días)
+    # 2. Riesgo por Vencimiento FEFO (<= 7 días, incluyendo ya vencidos)
     satos_vencimiento_rows = (
         db.query(
             Sato,
@@ -103,7 +102,7 @@ def get_dashboard_kpis(db: Session = Depends(get_db_read), user=Depends(get_curr
             Sato.estado.in_(["Vitrina", "Bodega", "Bodega Recepcion"]),
             Sato.cantidad > 0,
             Sato.fecha_vencimiento.isnot(None),
-            Sato.fecha_vencimiento <= limite_radar_14d,
+            Sato.fecha_vencimiento <= limite_vencimiento_7d,
         )
         .order_by(Sato.fecha_vencimiento.asc(), Sato.sato_id.asc())
         .all()
@@ -120,12 +119,11 @@ def get_dashboard_kpis(db: Session = Depends(get_db_read), user=Depends(get_curr
         valor_lote = cant * max(0, costo_ef)
         dias_rest = (sato.fecha_vencimiento - hoy).days if sato.fecha_vencimiento else 0
 
-        if sato.fecha_vencimiento and sato.fecha_vencimiento <= limite_vencimiento_7d:
-            alertas_vencimiento_unidades += cant
-            lotes_riesgo_7d_count += 1
-            perdida_proyectada_clp += valor_lote
+        alertas_vencimiento_unidades += cant
+        lotes_riesgo_7d_count += 1
+        perdida_proyectada_clp += valor_lote
 
-        if len(radar_fefo_items) < 6:
+        if len(radar_fefo_items) < 100:
             radar_fefo_items.append(
                 {
                     "sato_id": str(sato.sato_id),

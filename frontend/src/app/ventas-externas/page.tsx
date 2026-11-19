@@ -1162,7 +1162,16 @@ export default function VentasExternasPage() {
                             -{item.total_unidades} un
                           </td>
                           <td className="py-3.5 px-4 text-slate-600 font-mono">
-                            ${(item.total_valorizado || 0).toLocaleString("es-CL")} CLP
+                            {(item.total_valorizado || 0) > 0 ? (
+                              `$${Number(item.total_valorizado).toLocaleString("es-CL")} CLP`
+                            ) : (
+                              <span
+                                className="text-slate-400 italic font-sans text-[11px]"
+                                title="Boleta histórica sin precio unitario informado por el POS"
+                              >
+                                Sin monto
+                              </span>
+                            )}
                           </td>
                           <td className="py-3.5 px-4 text-slate-500">
                             {formatShortTime(item.fecha_recepcion || item.fecha_venta_origen)}

@@ -12,6 +12,23 @@ class DuplicateLPNError(ValueError):
     pass
 
 
+def resolver_id_zona_recepcion_default(patentes: list[Patente]) -> Optional[str]:
+    """Retorna la primera patente de bodega cuyo ID o área corresponda a recepción."""
+    for p in patentes:
+        if "recep" in (p.id_patente or "").lower() or "recep" in (p.area_pasillo or "").lower():
+            return p.id_patente
+    return None
+
+
+def resolver_ubicacion_bodega_default(db: Session, ubicacion_id: Optional[str] = None) -> Optional[str]:
+    """Retorna la ubicación indicada o la zona de recepción por defecto del tenant si existe."""
+    clean = (ubicacion_id or "").strip()
+    if clean:
+        return clean
+    patentes = db.query(Patente).filter(Patente.tipo_ubicacion != "SALA_VENTA").all()
+    return resolver_id_zona_recepcion_default(patentes)
+
+
 def _resolver_producto_recepcion(db: Session, codigo_leido: str) -> Tuple[Optional[Catalogo_Producto], bool]:
     """
     Resuelve un código leído por pistola láser GS1-128 o cámara contra el Catálogo:
@@ -102,6 +119,7 @@ def recepcionar_pallet(
         )
 
     _validar_cadena_frio(db, producto, ubicacion_id)
+    ubicacion_final = resolver_ubicacion_bodega_default(db, ubicacion_id)
 
     # Si no trae fecha de vencimiento pero el producto tiene dias_vida_util configurados, calcularla
     vencimiento = datos_extraidos.get("vencimiento")
@@ -142,7 +160,7 @@ def recepcionar_pallet(
         fecha_vencimiento=datos_extraidos.get("vencimiento"),
         cantidad=unidades_totales,
         estado="Bodega",
-        ubicacion_id=ubicacion_id,
+        ubicacion_id=ubicacion_final,
     )
     db.add(nuevo_sato)
     db.flush()
@@ -185,6 +203,8 @@ def recepcionar_lpn(
     if sato_existente:
         raise DuplicateLPNError("El pallet ya fue recepcionado")
 
+    ubicacion_lpn = resolver_ubicacion_bodega_default(db, request_data.get("ubicacion_id"))
+
     nuevo_sato_contenedor = Sato(
         tipo_sato="CONTENEDOR",
         lpn=request_data["lpn"],
@@ -192,7 +212,7 @@ def recepcionar_lpn(
         tipo_carga=request_data["tipo_carga"],
         barcode_original=request_data["original_barcode"],
         estado="Bodega",
-        ubicacion_id=request_data.get("ubicacion_id"),
+        ubicacion_id=ubicacion_lpn,
     )
 
     db.add(nuevo_sato_contenedor)
@@ -245,7 +265,7 @@ def recepcionar_lpn(
                 lote=detalle.lote,
                 fecha_vencimiento=detalle.fecha_vencimiento,
                 estado="Bodega",
-                ubicacion_id=request_data.get("ubicacion_id"),
+                ubicacion_id=ubicacion_lpn,
             )
             db.add(nuevo_sato_hijo)
             bultos_creados += 1

@@ -45,9 +45,14 @@ export default function PlanoBodegaPage() {
 
   // Zona seleccionada y su stock
   const [selectedPatente, setSelectedPatente] = useState<BodegaPatente | null>(null);
+  const selectedPatenteRef = useRef<BodegaPatente | null>(null);
   const hasAutoSelectedRef = useRef(false);
   const [stockZone, setStockZone] = useState<BodegaStockSato[]>([]);
   const [loadingStock, setLoadingStock] = useState(false);
+
+  useEffect(() => {
+    selectedPatenteRef.current = selectedPatente;
+  }, [selectedPatente]);
 
   // Filtro de tipo de zona
   const [tempFilter, setTempFilter] = useState<"ALL" | "SECO" | "FRIO">("ALL");
@@ -90,7 +95,15 @@ export default function PlanoBodegaPage() {
 
   useEffect(() => {
     fetchZonas();
-  }, [fetchZonas]);
+    const onInventoryUpdated = () => {
+      fetchZonas();
+      if (selectedPatenteRef.current) {
+        handleZoneClick(selectedPatenteRef.current);
+      }
+    };
+    window.addEventListener("bvcore:inventory-updated", onInventoryUpdated);
+    return () => window.removeEventListener("bvcore:inventory-updated", onInventoryUpdated);
+  }, [fetchZonas, handleZoneClick]);
 
   // Posicionamiento del Tour Guiado
   const repositionTour = useCallback((stepIdx: number) => {

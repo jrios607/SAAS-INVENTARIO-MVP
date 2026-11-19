@@ -20,6 +20,7 @@ import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile, status
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -46,7 +47,7 @@ from app.domains.integration.schemas import (
     RevertirVentaRequest,
     RevertirVentaResponse,
 )
-from app.models import Integration_Log, Venta_Externa
+from app.models import Integration_Log, Venta_Externa, Venta_Externa_Item
 from app.services.abc_service import recalcular_clasificacion_abc
 from app.services.catalogo_service import invalidar_cache_catalogo
 from app.services.external_sales_service import (
@@ -542,6 +543,22 @@ def listar_historial_ventas_externas(
         query = query.filter(Venta_Externa.canal == canal.upper())
 
     ventas = query.limit(limit).all()
+
+    # Fallback en una sola consulta agregada para tickets cuyo total_valorizado quedó en 0 teniendo ítems
+    zero_ids = [v.id for v in ventas if int(v.total_valorizado or 0) <= 0]
+    fallback_totales: dict[int, int] = {}
+    if zero_ids:
+        agg_rows = (
+            db.query(
+                Venta_Externa_Item.venta_id,
+                func.coalesce(func.sum(Venta_Externa_Item.subtotal), 0),
+            )
+            .filter(Venta_Externa_Item.venta_id.in_(zero_ids))
+            .group_by(Venta_Externa_Item.venta_id)
+            .all()
+        )
+        fallback_totales = {int(vid): int(tot or 0) for vid, tot in agg_rows}
+
     return [
         ExternalSaleHistoryItem(
             id=v.id,
@@ -552,7 +569,11 @@ def listar_historial_ventas_externas(
             items_huerfanos_count=int(v.items_huerfanos_count or 0),
             total_unidades=v.total_unidades,
             unidades_deficit=v.unidades_deficit or 0,
-            total_valorizado=v.total_valorizado or 0,
+            total_valorizado=(
+                int(v.total_valorizado or 0)
+                if int(v.total_valorizado or 0) > 0
+                else fallback_totales.get(v.id, 0)
+            ),
             es_carga_historica=bool(v.es_carga_historica),
             fecha_venta_origen=v.fecha_venta_origen,
             fecha_recepcion=v.fecha_recepcion.isoformat() if v.fecha_recepcion else None,

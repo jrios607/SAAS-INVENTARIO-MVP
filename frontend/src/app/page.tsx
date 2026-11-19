@@ -238,11 +238,11 @@ export default function CentroDeInformacionPage() {
     );
   }, [familiasStock]);
 
-  // Detalle de productos bajo stock mínimo
+  // Detalle de productos bajo stock mínimo (estricto <, igual que dashboard.py)
   const productosBajoMinimo = useMemo<ProductoConFamilia[]>(() => {
     return todosLosProductos.filter((p) => {
-      const min = p.stock_minimo ?? 5;
-      return p.stock_individual <= min;
+      const min = Math.max(1, p.stock_minimo ?? 5);
+      return p.stock_individual < min;
     });
   }, [todosLosProductos]);
 

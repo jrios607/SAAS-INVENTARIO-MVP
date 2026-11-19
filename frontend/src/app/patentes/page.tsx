@@ -515,6 +515,17 @@ export default function PatentesPage() {
     }
   }, [muebleSeleccionado, isEditMode, cargarStockGondola]);
 
+  useEffect(() => {
+    const onInventoryUpdated = () => {
+      refrescarDatosOperativos();
+      if (muebleSeleccionado && !isEditMode) {
+        cargarStockGondola(muebleSeleccionado.id, muebleSeleccionado.persistedInDb);
+      }
+    };
+    window.addEventListener("bvcore:inventory-updated", onInventoryUpdated);
+    return () => window.removeEventListener("bvcore:inventory-updated", onInventoryUpdated);
+  }, [refrescarDatosOperativos, cargarStockGondola, muebleSeleccionado, isEditMode]);
+
   // ── Guardar Layout Real en PostgreSQL (Incluye Altas, Cambios y Eliminaciones) ──
   const handleGuardarEnPostgreSQL = async () => {
     setIsSavingBD(true);
@@ -1564,7 +1575,9 @@ export default function PatentesPage() {
           {/* KPIs Operativos Reales y Acciones de Construcción */}
           <div className="flex items-center gap-2.5 flex-wrap shrink-0">
             <span className="text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 px-3 py-2 rounded-2xl shadow-2xs">
-              Sala: {stats.unidadesVitrina} • Bodega: {stats.unidadesBodega}
+              {isLoadingDB
+                ? "Cargando stock..."
+                : `Sala: ${stats.unidadesVitrina} • Bodega: ${stats.unidadesBodega}`}
             </span>
 
             <button
