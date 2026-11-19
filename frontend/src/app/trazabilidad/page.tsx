@@ -19,7 +19,7 @@ const ACTION_META: Record<string, ActionMeta> = {
     badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200",
   },
   CREACION_INGRESO_LPN: {
-    label: "Recepción de Pallet",
+    label: "Ingreso de Mercadería",
     badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200",
   },
   INGRESO_STOCK_CATALOGO: {
@@ -90,6 +90,33 @@ const TOUR_STEPS: TourStep[] = [
     desc: "Revisa fecha, hora, producto afectado, qué ocurrió en lenguaje simple y quién lo realizó. Además puedes ver el historial completo de un lote desde que entró a bodega hasta la góndola.",
   },
 ];
+
+function humanizeDetalle(raw?: string | null): string {
+  if (!raw) return "—";
+  let text = raw;
+  text = text
+    .replace(/POS=BSALE_POS/gi, "Caja: Bsale")
+    .replace(/POS=LOYVERSE_POS/gi, "Caja: Loyverse")
+    .replace(/POS=SHOPIFY_POS/gi, "Caja: Shopify")
+    .replace(/POS=SOFTLAND_ERP_POS/gi, "Caja: Softland")
+    .replace(/POS=FACTURACION_CL/gi, "Caja: Facturacion.cl")
+    .replace(/POS=CAJA_TRADICIONAL_Z/gi, "Caja tradicional")
+    .replace(/POS=ARCHIVO_POS/gi, "Planilla POS")
+    .replace(/canal=BATCH_JSON/gi, "Ingreso automático")
+    .replace(/canal=WEBHOOK/gi, "En vivo")
+    .replace(/canal=CSV_UPLOAD|canal=FILE_IMPORT/gi, "Archivo importado")
+    .replace(/DETERIORO_CADENA_FRIO/gi, "Pérdida de frío")
+    .replace(/ROTURA_DANO/gi, "Envase dañado / roto")
+    .replace(/\bVENCIDO\b/gi, "Producto vencido");
+
+  const matchAbast = text.match(
+    /SATO Parcial abastecido en vitrina \(Patente:\s*([^,]+),\s*Niv:\s*(\d+),\s*Fte:\s*(\d+),\s*Cant:\s*(\d+)\)/i
+  );
+  if (matchAbast) {
+    return `Se repusieron ${matchAbast[4]} un. en ${matchAbast[1]} (estante ${matchAbast[2]}, frente ${matchAbast[3]})`;
+  }
+  return text;
+}
 
 export default function TrazabilidadPage() {
   const [page, setPage] = useState(1);
@@ -445,7 +472,7 @@ export default function TrazabilidadPage() {
               <option value="REVERSION_VENTA_EXTERNA">Anulación de Boleta POS</option>
               <option value="DECLARACION_MERMA">Merma Registrada</option>
               <option value="CREACION_INGRESO_BODEGA">Ingreso a Bodega</option>
-              <option value="CREACION_INGRESO_LPN">Recepción de Pallet</option>
+              <option value="CREACION_INGRESO_LPN">Ingreso de Mercadería</option>
               <option value="INGRESO_STOCK_CATALOGO">Ingreso desde Catálogo</option>
               <option value="MOVIMIENTO_A_VITRINA">Reposición a Vitrina</option>
               <option value="AJUSTE_LOTE_CATALOGO">Ajuste de Lote</option>
@@ -579,7 +606,7 @@ export default function TrazabilidadPage() {
                           className="py-4 px-4 text-xs text-slate-600 max-w-md truncate"
                           title={log.detalles || ""}
                         >
-                          {log.detalles || "—"}
+                          {humanizeDetalle(log.detalles)}
                         </td>
                         <td className="py-4 px-4 pr-6 whitespace-nowrap text-xs text-slate-500 text-right">
                           {log.usuario}
@@ -650,9 +677,12 @@ export default function TrazabilidadPage() {
 
               <div className="p-6 overflow-y-auto flex-1">
                 {isLoadingTree ? (
-                  <div className="space-y-3 animate-pulse">
-                    <div className="h-14 bg-slate-100 rounded-2xl" />
-                    <div className="h-14 bg-rose-50 rounded-2xl ml-6" />
+                  <div className="space-y-3 py-4">
+                    <p className="text-xs font-semibold text-rose-600 text-center">
+                      Consultando recorrido del lote...
+                    </p>
+                    <div className="h-14 bg-slate-100 rounded-2xl animate-pulse" />
+                    <div className="h-14 bg-rose-50 rounded-2xl ml-6 animate-pulse" />
                   </div>
                 ) : treeData ? (
                   <div>{renderTree(treeData)}</div>

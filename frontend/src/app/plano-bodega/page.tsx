@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   getPatentesBodega,
   getStockBodegaZona,
@@ -45,6 +45,7 @@ export default function PlanoBodegaPage() {
 
   // Zona seleccionada y su stock
   const [selectedPatente, setSelectedPatente] = useState<BodegaPatente | null>(null);
+  const hasAutoSelectedRef = useRef(false);
   const [stockZone, setStockZone] = useState<BodegaStockSato[]>([]);
   const [loadingStock, setLoadingStock] = useState(false);
 
@@ -76,7 +77,8 @@ export default function PlanoBodegaPage() {
     try {
       const data = await getPatentesBodega();
       setZonas(data || []);
-      if (data && data.length > 0 && !selectedPatente) {
+      if (data && data.length > 0 && !hasAutoSelectedRef.current) {
+        hasAutoSelectedRef.current = true;
         handleZoneClick(data[0]);
       }
     } catch (err: any) {
@@ -84,7 +86,7 @@ export default function PlanoBodegaPage() {
     } finally {
       setLoading(false);
     }
-  }, [handleZoneClick, selectedPatente]);
+  }, [handleZoneClick]);
 
   useEffect(() => {
     fetchZonas();
@@ -469,7 +471,7 @@ export default function PlanoBodegaPage() {
                 </div>
               ) : (
                 <div
-                  className="grid gap-3.5 min-w-[640px] min-h-[380px]"
+                  className="grid gap-3.5 min-w-[460px] min-h-[380px]"
                   style={{
                     gridTemplateColumns: `repeat(${maxCols}, minmax(64px, 1fr))`,
                     gridTemplateRows: `repeat(${maxRows}, minmax(64px, 1fr))`,
@@ -511,7 +513,7 @@ export default function PlanoBodegaPage() {
 
                       <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px]">
                         <span className="font-semibold text-slate-600">
-                          {zona.pallets} bultos
+                          {zona.pallets === 1 ? "1 bulto" : `${zona.pallets} bultos`}
                         </span>
                         <span className="font-extrabold text-rose-600">
                           {zona.unidades.toLocaleString("es-CL")} unid.
@@ -549,7 +551,10 @@ export default function PlanoBodegaPage() {
                   </h2>
                   <p className="text-[11px] text-slate-500">
                     Código: <strong className="font-mono">{selectedPatente.id_patente}</strong> ·{" "}
-                    {selectedPatente.unidades} unidades en {selectedPatente.pallets} bulto(s)
+                    {selectedPatente.unidades} unidades en{" "}
+                    {selectedPatente.pallets === 1
+                      ? "1 bulto"
+                      : `${selectedPatente.pallets} bultos`}
                   </p>
                 </div>
 

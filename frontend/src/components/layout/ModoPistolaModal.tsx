@@ -30,8 +30,35 @@ export function ModoPistolaModal() {
 
   const [cachedProductos, setCachedProductos] = useState<ProductoDetalleStock[]>([]);
   const [cachedPatentes, setCachedPatentes] = useState<Patente[]>([]);
+  const [sugerencias, setSugerencias] = useState<ProductoDetalleStock[]>([]);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const pendingSkuRef = useRef<string | null>(null);
+
+  const seleccionarProducto = useCallback(
+    (found: ProductoDetalleStock) => {
+      const lotesBodega = (found.lotes || []).filter(
+        (l) => l.stock > 0 && (l.ubicacion || "").toLowerCase().includes("bodega")
+      );
+      const loteFefo = lotesBodega[0] || (found.lotes || [])[0];
+
+      const patenteAsignada =
+        cachedPatentes.find((pat) => (pat.productos_asignados || []).includes(found.sku))
+          ?.id_patente ||
+        cachedPatentes[0]?.id_patente ||
+        "GOND-01";
+
+      setProducto({
+        ...found,
+        loteBodegaFefo: loteFefo,
+        patenteDestino: patenteAsignada,
+      });
+      setSugerencias([]);
+      setCantidadAccion(1);
+      setFeedbackMsg(null);
+    },
+    [cachedPatentes]
+  );
 
   // Cargar catálogo y patentes en memoria para respuesta instantánea (sub-segundo)
   const cargarCatalogos = useCallback(async () => {
@@ -53,11 +80,12 @@ export function ModoPistolaModal() {
     }
   }, []);
 
-  // Escuchar F2 o evento global para abrir/cerrar
+  // Escuchar F2 o evento global para abrir/cerrar (soporta pre-carga de SKU vía detail.sku)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "F2") {
         e.preventDefault();
+        pendingSkuRef.current = null;
         setIsOpen((prev) => !prev);
       } else if (e.key === "Escape" && isOpen) {
         e.preventDefault();
@@ -65,7 +93,9 @@ export function ModoPistolaModal() {
       }
     };
 
-    const handleCustomOpen = () => {
+    const handleCustomOpen = (e: Event) => {
+      const custom = e as CustomEvent<{ sku?: string }>;
+      pendingSkuRef.current = custom.detail?.sku || null;
       setIsOpen(true);
     };
 
@@ -82,57 +112,73 @@ export function ModoPistolaModal() {
       cargarCatalogos();
       setFeedbackMsg(null);
       setProducto(null);
-      setScanCode("");
+      setSugerencias([]);
+      setScanCode(pendingSkuRef.current || "");
       setCantidadAccion(1);
       setTimeout(() => inputRef.current?.focus(), 80);
     }
   }, [isOpen, cargarCatalogos]);
 
-  // Buscar producto al ingresar código
+  // Resolver automáticamente cuando existe un SKU pre-cargado y el catálogo ya cargó
+  useEffect(() => {
+    if (!isOpen || !pendingSkuRef.current || cachedProductos.length === 0) return;
+    const target = pendingSkuRef.current.trim().toLowerCase();
+    const match = cachedProductos.find((p) => p.sku.toLowerCase() === target);
+    if (match) {
+      seleccionarProducto(match);
+      setScanCode(match.sku);
+    }
+    pendingSkuRef.current = null;
+  }, [isOpen, cachedProductos, seleccionarProducto]);
+
+  // Filtrado en vivo mientras escribe o escanea (y selección automática en match exacto de código)
   const handleBuscar = useCallback(
-    (codigoRaw: string) => {
+    (codigoRaw: string, isSubmit = false) => {
       const q = codigoRaw.trim().toLowerCase();
-      if (!q) return;
-
-      const found = cachedProductos.find(
-        (p) =>
-          p.sku.toLowerCase() === q ||
-          (p.ean && p.ean.toLowerCase() === q) ||
-          (p.dun14 && p.dun14.toLowerCase() === q) ||
-          p.nombre.toLowerCase().includes(q)
-      );
-
-      if (!found) {
-        setFeedbackMsg({
-          text: `No se encontró producto con código: "${codigoRaw}". Revisa el catálogo.`,
-          type: "error",
-        });
-        setProducto(null);
+      if (!q) {
+        setSugerencias([]);
+        setFeedbackMsg(null);
         return;
       }
 
-      // Buscar lote más antiguo en Bodega (FEFO)
-      const lotesBodega = (found.lotes || []).filter(
-        (l) => l.stock > 0 && (l.ubicacion || "").toLowerCase().includes("bodega")
+      const exact = cachedProductos.find(
+        (p) =>
+          p.sku.toLowerCase() === q ||
+          (p.ean && p.ean.toLowerCase() === q) ||
+          (p.dun14 && p.dun14.toLowerCase() === q)
       );
-      const loteFefo = lotesBodega[0] || (found.lotes || [])[0];
+      if (exact) {
+        seleccionarProducto(exact);
+        return;
+      }
 
-      // Determinar góndola/patente por defecto
-      const patenteAsignada =
-        cachedPatentes.find((pat) => (pat.productos_asignados || []).includes(found.sku))
-          ?.id_patente ||
-        cachedPatentes[0]?.id_patente ||
-        "GOND-01";
+      const matches = cachedProductos.filter(
+        (p) =>
+          p.nombre.toLowerCase().includes(q) ||
+          p.sku.toLowerCase().includes(q) ||
+          (p.ean && p.ean.toLowerCase().includes(q))
+      );
 
-      setProducto({
-        ...found,
-        loteBodegaFefo: loteFefo,
-        patenteDestino: patenteAsignada,
-      });
-      setCantidadAccion(1);
+      if (isSubmit) {
+        if (matches.length > 0) {
+          seleccionarProducto(matches[0]);
+          return;
+        }
+        setSugerencias([]);
+        setProducto(null);
+        setFeedbackMsg({
+          text: `No se encontró ningún producto para "${codigoRaw}". Verifica el código o nombre.`,
+          type: "error",
+        });
+        return;
+      }
+
+      // Al escribir texto parcial, mostrar sugerencias sin error invasivo
       setFeedbackMsg(null);
+      setProducto(null);
+      setSugerencias(q.length >= 2 ? matches.slice(0, 6) : []);
     },
-    [cachedProductos, cachedPatentes]
+    [cachedProductos, seleccionarProducto]
   );
 
   // Acción 1: Reponer a vitrina
@@ -164,6 +210,9 @@ export function ModoPistolaModal() {
         type: "success",
       });
       await cargarCatalogos();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("bvcore:inventory-updated"));
+      }
       setProducto(null);
       setScanCode("");
       setTimeout(() => inputRef.current?.focus(), 100);
@@ -193,6 +242,9 @@ export function ModoPistolaModal() {
         type: "success",
       });
       await cargarCatalogos();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("bvcore:inventory-updated"));
+      }
       setProducto(null);
       setScanCode("");
       setTimeout(() => inputRef.current?.focus(), 100);
@@ -247,7 +299,12 @@ export function ModoPistolaModal() {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Modo Pistola y Reposición Rápida"
+      className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4"
+    >
       <div className="bg-white border-2 border-rose-300 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95">
         {/* Cabecera */}
         <div className="flex items-center justify-between border-b border-rose-100 pb-3">
@@ -267,16 +324,16 @@ export function ModoPistolaModal() {
           <button
             type="button"
             onClick={() => setIsOpen(false)}
-            className="text-slate-400 hover:text-slate-700 text-xs font-bold px-2 py-1 rounded-lg transition"
+            className="text-slate-400 hover:text-slate-700 text-xs font-bold px-2 py-1 rounded-lg transition cursor-pointer"
           >
             ✕ Cerrar [Esc]
           </button>
         </div>
 
-        {/* Input de Lectura Automática */}
-        <div className="space-y-1.5">
+        {/* Input de Lectura Automática + Lista de sugerencias en vivo */}
+        <div className="space-y-2">
           <label className="block text-xs font-bold text-slate-700">
-            Escanea código de barras EAN o escribe SKU:
+            Escanea código de barras o escribe nombre / código del producto:
           </label>
           <input
             ref={inputRef}
@@ -285,17 +342,47 @@ export function ModoPistolaModal() {
             onChange={(e) => {
               const val = e.target.value;
               setScanCode(val);
-              handleBuscar(val);
+              handleBuscar(val, false);
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                handleBuscar(scanCode);
+                handleBuscar(scanCode, true);
               }
             }}
-            placeholder="Pistolea código de barra aquí..."
+            placeholder="Ej: Aceite, 780... o pistolea el código de barra aquí"
             className="w-full bg-slate-50 border-2 border-rose-200 focus:border-rose-600 rounded-2xl px-4 py-3 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:bg-white transition"
           />
+
+          {!producto && sugerencias.length > 0 && (
+            <div className="pt-1 max-h-56 overflow-y-auto space-y-1.5 pr-1">
+              {sugerencias.map((item) => (
+                <button
+                  key={item.sku}
+                  type="button"
+                  onClick={() => {
+                    seleccionarProducto(item);
+                    setScanCode(item.sku);
+                  }}
+                  className="w-full text-left p-2.5 rounded-2xl bg-slate-50 hover:bg-rose-50 border border-slate-200/80 hover:border-rose-300 transition flex items-center justify-between gap-3 cursor-pointer"
+                >
+                  <div className="min-w-0">
+                    <div className="text-xs font-extrabold text-slate-900 truncate">
+                      {item.nombre}
+                    </div>
+                    <div className="text-[11px] text-slate-500">
+                      Código: <span className="font-mono font-semibold">{item.sku}</span> · Sala:{" "}
+                      <strong className="text-rose-600">{item.stock_vitrina}</strong> · Bodega:{" "}
+                      <strong>{item.stock_bodega}</strong>
+                    </div>
+                  </div>
+                  <span className="text-[11px] font-black bg-rose-100 text-rose-700 px-2.5 py-1 rounded-xl shrink-0">
+                    {item.stock_individual} un.
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Mensajes de feedback */}
@@ -347,7 +434,7 @@ export function ModoPistolaModal() {
                 </strong>
                 {producto.loteBodegaFefo && (
                   <span className="text-[10px] text-rose-600 block mt-0.5 font-medium truncate">
-                    Lote FEFO: {producto.loteBodegaFefo.id_lote}
+                    Vence primero: {producto.loteBodegaFefo.id_lote}
                   </span>
                 )}
               </div>

@@ -47,19 +47,13 @@ export interface CatalogProduct {
 
 const FAMILIAS_CATALOGO = [
   "Abarrotes",
-  "Lácteos",
   "Lácteos y Huevos",
   "Carnes y Fiambrería",
-  "Fiambrería y Lácteos",
-  "Carnicería y Pescadería",
   "Frutas y Verduras",
-  "Panadería",
   "Panadería y Pastelería",
   "Congelados",
-  "Bebidas y Licores",
   "Bebidas y Líquidos",
   "Aseo y Limpieza",
-  "Limpieza y Hogar",
   "Cuidado Personal y Mascotas",
 ];
 
@@ -840,7 +834,7 @@ export default function CatalogoPage() {
               {products.length.toLocaleString("es-CL")}
             </div>
             <span className="text-[11px] text-slate-400 mt-1 block">
-              Artículos registrados hoy
+              Productos activos en tienda
             </span>
           </div>
 
@@ -1016,10 +1010,10 @@ export default function CatalogoPage() {
                         : "bg-sky-50 text-sky-700 border-sky-200";
                     const abcLabel =
                       abcClass === "A"
-                        ? "Clase A · Más vendido"
+                        ? "Más vendido"
                         : abcClass === "C"
-                        ? "Clase C · Baja rotación"
-                        : "Clase B · Rotación media";
+                        ? "Baja rotación"
+                        : "Rotación media";
 
                     return (
                       <React.Fragment key={prod.sku}>
@@ -1100,7 +1094,7 @@ export default function CatalogoPage() {
                               <button
                                 type="button"
                                 onClick={() => toggleDetail(prod.sku)}
-                                className={`px-3 py-1.5 rounded-xl border transition text-[11px] font-semibold shadow-2xs cursor-pointer ${
+                                className={`px-3 py-1.5 rounded-xl border transition text-[11px] font-semibold shadow-2xs cursor-pointer whitespace-nowrap shrink-0 ${
                                   isExpanded
                                     ? "bg-rose-50 text-rose-700 border-rose-200"
                                     : "bg-white hover:bg-slate-50 border-slate-200 text-slate-700"
@@ -1111,7 +1105,7 @@ export default function CatalogoPage() {
                               <button
                                 type="button"
                                 onClick={() => handleOpenAddStock(prod)}
-                                className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition text-[11px] font-bold cursor-pointer"
+                                className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition text-[11px] font-bold cursor-pointer whitespace-nowrap shrink-0"
                               >
                                 + Stock
                               </button>
@@ -1395,7 +1389,7 @@ export default function CatalogoPage() {
 
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
-                    Código caja mayorista (DUN-14)
+                    Código de caja (mayorista)
                   </label>
                   <input
                     type="text"
@@ -1525,7 +1519,7 @@ export default function CatalogoPage() {
                   />
                   <div>
                     <strong className="text-slate-900 block font-semibold">
-                      Control sanitario de vencimiento (FEFO)
+                      Controlar fecha de vencimiento
                     </strong>
                     <span className="text-slate-500 text-[11px]">
                       Solicita registrar el lote y la fecha de vencimiento cada vez que ingrese mercadería a bodega.
@@ -1556,7 +1550,7 @@ export default function CatalogoPage() {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1 text-xs">
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                    Tolerancia recepción
+                    Días mínimos al recibir
                   </label>
                   <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
                     <input

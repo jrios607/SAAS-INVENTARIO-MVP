@@ -90,6 +90,15 @@
   pointer-events: auto;
 }
 
+.nav-icon-badge {
+  transition: opacity 0.15s ease;
+}
+
+.sidebar-glass:hover .nav-icon-badge {
+  opacity: 0;
+  pointer-events: none;
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;

@@ -10,8 +10,6 @@ import {
   Building2,
   Webhook,
   FileSpreadsheet,
-  Camera,
-  ShieldAlert,
   Layers,
   CheckCircle2,
   Sparkles,
@@ -31,16 +29,11 @@ interface OnboardingWizardModalProps {
 }
 
 const OPTIONAL_MODULES_LIST = [
-  { id: "plano_bodega", label: "Plano Bodega (Trastienda / Cámaras)" },
-  { id: "ordenes_compra", label: "Órdenes de Compra (ASN)" },
-  { id: "picking", label: "Preparación de Pedidos (Picking)" },
-  { id: "pos_express", label: "POS Express (Cámara — Modo Demo)" },
+  { id: "plano_bodega", label: "Mapa de Bodega (Trastienda / Cámaras)" },
+  { id: "trazabilidad", label: "Historial de Movimientos (Auditoría)" },
 ];
 
-function computeDefaultModules(
-  scale: "minimarket" | "supermercado",
-  posMode: "modern_pos" | "legacy_file_pos" | "reference_pos"
-): string[] {
+function computeDefaultModules(scale: "minimarket" | "supermercado"): string[] {
   const base = [
     "dashboard",
     "catalogo",
@@ -48,13 +41,9 @@ function computeDefaultModules(
     "recepcion_bodega",
     "ajustes_inventario",
     "ventas_externas",
-    "trazabilidad",
   ];
   if (scale === "supermercado") {
-    base.push("plano_bodega", "ordenes_compra", "picking");
-  }
-  if (posMode === "reference_pos") {
-    base.push("pos_express");
+    base.push("plano_bodega", "trazabilidad");
   }
   return base;
 }
@@ -68,13 +57,12 @@ export function OnboardingWizardModal({
   const [step, setStep] = useState<number>(1);
   const [nombreLocal, setNombreLocal] = useState<string>("Mi Local BVCore");
   const [scale, setScale] = useState<"minimarket" | "supermercado">("minimarket");
-  const [posMode, setPosMode] = useState<"modern_pos" | "legacy_file_pos" | "reference_pos">("legacy_file_pos");
+  const [posMode, setPosMode] = useState<"modern_pos" | "legacy_file_pos">("legacy_file_pos");
   const [externalProvider, setExternalProvider] = useState<string>("BSALE_POS");
-  const [acceptedSiiDisclaimer, setAcceptedSiiDisclaimer] = useState<boolean>(false);
   const [fallbackBodega, setFallbackBodega] = useState<boolean>(false);
-  const [usesGs1Fefo, setUsesGs1Fefo] = useState<boolean>(true);
+  const [usesGs1Fefo, setUsesGs1Fefo] = useState<boolean>(false);
   const [enabledModules, setEnabledModules] = useState<string[]>(() =>
-    computeDefaultModules("minimarket", "legacy_file_pos")
+    computeDefaultModules("minimarket")
   );
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -83,27 +71,45 @@ export function OnboardingWizardModal({
     if (currentSettings && isOpen) {
       setNombreLocal(currentSettings.nombre_local || "Mi Local BVCore");
       setScale(currentSettings.business_profile.scale);
-      setPosMode(currentSettings.pos_strategy.mode);
+      setPosMode(
+        currentSettings.pos_strategy.mode === "modern_pos"
+          ? "modern_pos"
+          : "legacy_file_pos"
+      );
       setExternalProvider(currentSettings.pos_strategy.external_provider || "BSALE_POS");
-      setAcceptedSiiDisclaimer(Boolean(currentSettings.pos_strategy.accepted_no_sii_disclaimer));
       setFallbackBodega(Boolean(currentSettings.pos_strategy.fallback_to_warehouse_on_zero_shelf));
       setUsesGs1Fefo(Boolean(currentSettings.business_profile.uses_gs1_128_fefo));
-      setEnabledModules(currentSettings.enabled_modules);
+      setEnabledModules(
+        currentSettings.enabled_modules.filter(
+          (m) => m !== "picking" && m !== "ordenes_compra" && m !== "pos_express"
+        )
+      );
       setStep(1);
       setErrorMsg(null);
     }
   }, [currentSettings, isOpen]);
 
+  // Permitir cerrar con la tecla Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleScaleSelect = (newScale: "minimarket" | "supermercado") => {
     setScale(newScale);
-    setEnabledModules(computeDefaultModules(newScale, posMode));
-  };
-
-  const handlePosModeSelect = (newMode: "modern_pos" | "legacy_file_pos" | "reference_pos") => {
-    setPosMode(newMode);
-    setEnabledModules(computeDefaultModules(scale, newMode));
+    setEnabledModules(computeDefaultModules(newScale));
+    if (newScale === "minimarket") {
+      setUsesGs1Fefo(false);
+    }
   };
 
   const toggleOptionalModule = (modId: string) => {
@@ -113,10 +119,6 @@ export function OnboardingWizardModal({
   };
 
   const handleSave = async () => {
-    if (posMode === "reference_pos" && !acceptedSiiDisclaimer) {
-      setErrorMsg("Debes confirmar la lectura del aviso sobre el Modo Demo de POS Express.");
-      return;
-    }
     setIsSaving(true);
     setErrorMsg(null);
     try {
@@ -130,7 +132,7 @@ export function OnboardingWizardModal({
         },
         pos_strategy: {
           mode: posMode,
-          accepted_no_sii_disclaimer: acceptedSiiDisclaimer,
+          accepted_no_sii_disclaimer: false,
           external_provider: posMode === "modern_pos" ? externalProvider : null,
           fallback_to_warehouse_on_zero_shelf: fallbackBodega,
         },
@@ -139,7 +141,8 @@ export function OnboardingWizardModal({
       onSaved(updated);
       onClose();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "No se pudo guardar la configuración del local.";
+      const msg =
+        err instanceof Error ? err.message : "No se pudo guardar la configuración del local.";
       setErrorMsg(msg);
     } finally {
       setIsSaving(false);
@@ -147,65 +150,74 @@ export function OnboardingWizardModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-[#0e0e0e] border border-[#262626] rounded-2xl max-w-3xl w-full shadow-2xl overflow-hidden text-gray-200">
-        {/* Cabecera */}
-        <div className="p-6 border-b border-[#1f1f1f] flex items-center justify-between bg-[#0a0a0a]">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Configuración del negocio"
+      className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+    >
+      <div className="bg-white border border-rose-200 rounded-3xl max-w-3xl w-full shadow-2xl overflow-hidden text-slate-800 my-auto">
+        {/* Cabecera Pastel-Rose */}
+        <div className="p-5 sm:p-6 border-b border-rose-100 flex items-center justify-between bg-rose-50/40">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-              <Sparkles size={20} />
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-rose-600 to-rose-500 flex items-center justify-center text-white shadow-sm shadow-rose-200 shrink-0">
+              <Sparkles size={19} />
             </div>
             <div>
-              <div className="text-[11px] uppercase tracking-widest text-emerald-400 font-bold">
-                Perfilamiento Adaptativo • Paso {step} de 4
+              <div className="text-[11px] uppercase tracking-wider text-rose-600 font-extrabold">
+                Configuración de tu tienda • Paso {step} de 4
               </div>
-              <h2 className="text-xl font-bold text-white">Configura tu Cerebro Logístico</h2>
+              <h2 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
+                Adapta BVCore a tu negocio
+              </h2>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-[#1a1a1a] transition-colors"
-            title="Cerrar asistente"
+            className="px-3 py-1.5 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-rose-100/70 transition-colors text-xs font-bold flex items-center gap-1 cursor-pointer"
+            title="Cerrar asistente (Esc)"
           >
-            <X size={18} />
+            <X size={16} />
+            <span className="hidden sm:inline">Esc</span>
           </button>
         </div>
 
         {/* Barra de progreso */}
-        <div className="grid grid-cols-4 gap-1 bg-[#0a0a0a] px-6 pb-4">
+        <div className="grid grid-cols-4 gap-1.5 bg-rose-50/40 px-6 pb-4">
           {[1, 2, 3, 4].map((n) => (
             <div
               key={n}
               className={`h-1.5 rounded-full transition-colors ${
-                n <= step ? "bg-emerald-500" : "bg-[#222]"
+                n <= step ? "bg-rose-600" : "bg-rose-200/70"
               }`}
             />
           ))}
         </div>
 
         {/* Cuerpo por paso */}
-        <div className="p-6 md:p-8 space-y-6">
+        <div className="p-5 sm:p-7 space-y-5 max-h-[68vh] overflow-y-auto">
           {step === 1 && (
-            <div className="space-y-5">
+            <div className="space-y-4">
               <div>
-                <h3 className="text-lg font-bold text-white">
-                  1. ¿Cuál describe mejor la operación física de tu negocio?
+                <h3 className="text-base font-extrabold text-slate-900">
+                  1. ¿Cómo es el tamaño de tu tienda?
                 </h3>
-                <p className="text-xs text-gray-400 mt-1">
-                  BVCore adapta la barra lateral para mostrar únicamente las herramientas que tu equipo necesita.
+                <p className="text-xs text-slate-500 mt-1">
+                  Ajustamos el menú lateral para que solo veas las pantallas que necesitas en el día a día.
                 </p>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1.5">
-                  Nombre de tu Local o Sucursal
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Nombre de tu local o sucursal
                 </label>
                 <input
                   type="text"
                   value={nombreLocal}
                   onChange={(e) => setNombreLocal(e.target.value)}
-                  placeholder="Ej: Minimarket Don Pedro / Supermercado Central"
-                  className="w-full bg-[#070707] border border-[#262626] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
+                  placeholder="Ej: Minimarket Don Pedro / Almacén Central"
+                  className="w-full bg-slate-50 border border-slate-200 focus:border-rose-500 focus:bg-white rounded-2xl px-4 py-2.5 text-sm font-semibold text-slate-900 focus:outline-none transition"
                 />
               </div>
 
@@ -213,48 +225,56 @@ export function OnboardingWizardModal({
                 <button
                   type="button"
                   onClick={() => handleScaleSelect("minimarket")}
-                  className={`p-5 rounded-2xl border text-left transition-all ${
+                  className={`p-5 rounded-2xl border-2 text-left transition-all cursor-pointer ${
                     scale === "minimarket"
-                      ? "bg-emerald-500/10 border-emerald-500 text-white"
-                      : "bg-[#080808] border-[#222] text-gray-300 hover:border-[#333]"
+                      ? "bg-rose-50/70 border-rose-500 shadow-xs"
+                      : "bg-white border-slate-200 hover:border-rose-300"
                   }`}
                 >
                   <div className="flex items-center justify-between mb-3">
-                    <Store size={24} className={scale === "minimarket" ? "text-emerald-400" : "text-gray-400"} />
+                    <Store
+                      size={24}
+                      className={scale === "minimarket" ? "text-rose-600" : "text-slate-400"}
+                    />
                     {scale === "minimarket" && (
-                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-500 text-black">
+                      <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-lg bg-rose-600 text-white">
                         Seleccionado
                       </span>
                     )}
                   </div>
-                  <div className="font-bold text-base">Minimarket / Almacén de Barrio</div>
-                  <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">
-                    1 a 3 pasillos, trastienda pequeña o integrada. Oculta por defecto módulos industriales como
-                    Picking por Olas y Plano de Bodega separado.
+                  <div className="font-extrabold text-sm text-slate-900">
+                    Minimarket / Almacén de Barrio
+                  </div>
+                  <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
+                    1 a 3 pasillos y trastienda pequeña. Mantiene una interfaz simple y directa para revisar en 10 minutos al día.
                   </p>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => handleScaleSelect("supermercado")}
-                  className={`p-5 rounded-2xl border text-left transition-all ${
+                  className={`p-5 rounded-2xl border-2 text-left transition-all cursor-pointer ${
                     scale === "supermercado"
-                      ? "bg-emerald-500/10 border-emerald-500 text-white"
-                      : "bg-[#080808] border-[#222] text-gray-300 hover:border-[#333]"
+                      ? "bg-rose-50/70 border-rose-500 shadow-xs"
+                      : "bg-white border-slate-200 hover:border-rose-300"
                   }`}
                 >
                   <div className="flex items-center justify-between mb-3">
-                    <Building2 size={24} className={scale === "supermercado" ? "text-emerald-400" : "text-gray-400"} />
+                    <Building2
+                      size={24}
+                      className={scale === "supermercado" ? "text-rose-600" : "text-slate-400"}
+                    />
                     {scale === "supermercado" && (
-                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-500 text-black">
+                      <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-lg bg-rose-600 text-white">
                         Seleccionado
                       </span>
                     )}
                   </div>
-                  <div className="font-bold text-base">Supermercado / Distribuidora</div>
-                  <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">
-                    Múltiples pasillos, bodega independiente o cámaras de frío. Desbloquea vista dual (Plano Sala +
-                    Plano Bodega), Órdenes de Compra y Preparación (Picking).
+                  <div className="font-extrabold text-sm text-slate-900">
+                    Supermercado / Bodega Amplia
+                  </div>
+                  <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
+                    Varios pasillos, bodega independiente o cámaras de frío. Activa también el Mapa de Bodega y el Historial detallado.
                   </p>
                 </button>
               </div>
@@ -262,118 +282,78 @@ export function OnboardingWizardModal({
           )}
 
           {step === 2 && (
-            <div className="space-y-5">
+            <div className="space-y-4">
               <div>
-                <h3 className="text-lg font-bold text-white">
-                  2. ¿Cómo registras las ventas en caja actualmente?
+                <h3 className="text-base font-extrabold text-slate-900">
+                  2. ¿Cómo registras las ventas en tu caja?
                 </h3>
-                <p className="text-xs text-gray-400 mt-1">
-                  Configura el canal predeterminado con el que BVCore descontará el stock vendido bajo FEFO.
+                <p className="text-xs text-slate-500 mt-1">
+                  BVCore se conecta a tu caja actual para descontar el stock vendido automáticamente (sin reemplazar tu boleta).
                 </p>
               </div>
 
               <div className="space-y-3">
                 <button
                   type="button"
-                  onClick={() => handlePosModeSelect("modern_pos")}
-                  className={`w-full p-4 rounded-2xl border text-left transition-all flex items-start gap-4 ${
+                  onClick={() => setPosMode("modern_pos")}
+                  className={`w-full p-4 rounded-2xl border-2 text-left transition-all flex items-start gap-4 cursor-pointer ${
                     posMode === "modern_pos"
-                      ? "bg-blue-500/10 border-blue-500 text-white"
-                      : "bg-[#080808] border-[#222] text-gray-300 hover:border-[#333]"
+                      ? "bg-rose-50/70 border-rose-500 shadow-xs"
+                      : "bg-white border-slate-200 hover:border-rose-300"
                   }`}
                 >
-                  <Webhook size={22} className="text-blue-400 shrink-0 mt-0.5" />
+                  <Webhook
+                    size={22}
+                    className={`shrink-0 mt-0.5 ${
+                      posMode === "modern_pos" ? "text-rose-600" : "text-slate-400"
+                    }`}
+                  />
                   <div className="flex-1">
-                    <div className="font-bold text-sm">
-                      Opción A: Ya cuento con un Punto de Venta moderno (Bsale, Loyverse, Fudo, Shopify, ERP)
+                    <div className="font-extrabold text-sm text-slate-900">
+                      Opción A: Tengo caja con conexión en vivo (Bsale, Loyverse, Fudo, Shopify)
                     </div>
-                    <p className="text-xs text-gray-400 mt-1">
-                      Abre Ventas Externas directamente en <strong>Conexión Automática en Vivo (API Key)</strong> y
-                      deja la subida de archivos como respaldo secundario.
+                    <p className="text-xs text-slate-600 mt-1">
+                      Cada venta en caja descuenta el inventario al instante de forma automática.
                     </p>
                   </div>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => handlePosModeSelect("legacy_file_pos")}
-                  className={`w-full p-4 rounded-2xl border text-left transition-all flex items-start gap-4 ${
+                  onClick={() => setPosMode("legacy_file_pos")}
+                  className={`w-full p-4 rounded-2xl border-2 text-left transition-all flex items-start gap-4 cursor-pointer ${
                     posMode === "legacy_file_pos"
-                      ? "bg-emerald-500/10 border-emerald-500 text-white"
-                      : "bg-[#080808] border-[#222] text-gray-300 hover:border-[#333]"
+                      ? "bg-rose-50/70 border-rose-500 shadow-xs"
+                      : "bg-white border-slate-200 hover:border-rose-300"
                   }`}
                 >
-                  <FileSpreadsheet size={22} className="text-emerald-400 shrink-0 mt-0.5" />
+                  <FileSpreadsheet
+                    size={22}
+                    className={`shrink-0 mt-0.5 ${
+                      posMode === "legacy_file_pos" ? "text-rose-600" : "text-slate-400"
+                    }`}
+                  />
                   <div className="flex-1">
-                    <div className="font-bold text-sm">
-                      Opción B: Uso caja tradicional o facturador con reporte de cierre (.XLSX / .CSV / .TXT)
+                    <div className="font-extrabold text-sm text-slate-900">
+                      Opción B: Subo mi reporte o planilla de ventas al final del día (.XLSX / .CSV / .TXT)
                     </div>
-                    <p className="text-xs text-gray-400 mt-1">
-                      Abre Ventas Externas enfocado en la <strong>Carga de Archivos Cierre Z con Pre-visualización Segura (Dry-Run)</strong>.
-                    </p>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handlePosModeSelect("reference_pos")}
-                  className={`w-full p-4 rounded-2xl border text-left transition-all flex items-start gap-4 ${
-                    posMode === "reference_pos"
-                      ? "bg-amber-500/10 border-amber-500 text-white"
-                      : "bg-[#080808] border-[#222] text-gray-300 hover:border-[#333]"
-                  }`}
-                >
-                  <Camera size={22} className="text-amber-400 shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-sm">
-                        Opción C: Habilitar vista POS Express (Cámara)
-                      </span>
-                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                        Modo Demo
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-400 mt-1">
-                      Muestra en el menú lateral el módulo demostrativo de escaneo por cámara o pistola láser.
+                    <p className="text-xs text-slate-600 mt-1">
+                      Ideal para cajas tradicionales o facturadores: cargas el archivo de cierre y revisas antes de descontar.
                     </p>
                   </div>
                 </button>
               </div>
-
-              {posMode === "reference_pos" && (
-                <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-500/40 text-amber-200 text-xs space-y-2.5">
-                  <div className="flex items-start gap-2.5">
-                    <ShieldAlert size={18} className="text-amber-400 shrink-0 mt-0.5" />
-                    <div>
-                      <strong>Aviso Importante (Modo Demo / Sin Validez SII):</strong> &ldquo;POS Express&rdquo; es una
-                      vista referencial de demostración para lectura por cámara o pistola láser. No emite boletas ni
-                      facturas electrónicas válidas ante el SII y opera en entorno de demostración sin alterar los
-                      lotes productivos.
-                    </div>
-                  </div>
-                  <label className="flex items-center gap-2 font-semibold text-amber-100 cursor-pointer pt-1">
-                    <input
-                      type="checkbox"
-                      checked={acceptedSiiDisclaimer}
-                      onChange={(e) => setAcceptedSiiDisclaimer(e.target.checked)}
-                      className="accent-amber-500"
-                    />
-                    Comprendo que POS Express es una vista demostrativa y no reemplaza la boleta electrónica del SII.
-                  </label>
-                </div>
-              )}
             </div>
           )}
 
           {step === 3 && (
-            <div className="space-y-5">
+            <div className="space-y-4">
               <div>
-                <h3 className="text-lg font-bold text-white">
-                  3. Regla Operativa de Descuento de Stock (Vitrina vs. Bodega)
+                <h3 className="text-base font-extrabold text-slate-900">
+                  3. Si la vitrina figura en 0 unidades al vender, ¿qué hacemos?
                 </h3>
-                <p className="text-xs text-gray-400 mt-1">
-                  Cuando vendes un producto y en el sistema figura que la Vitrina llegó a 0 unidades, ¿qué debe hacer
-                  BVCore? Esta política queda fija para proteger tu inventario.
+                <p className="text-xs text-slate-500 mt-1">
+                  Elige cómo cuidar la diferencia entre lo que está en góndola y lo que queda en bodega.
                 </p>
               </div>
 
@@ -381,45 +361,48 @@ export function OnboardingWizardModal({
                 <button
                   type="button"
                   onClick={() => setFallbackBodega(false)}
-                  className={`p-5 rounded-2xl border text-left transition-all ${
+                  className={`p-5 rounded-2xl border-2 text-left transition-all cursor-pointer ${
                     !fallbackBodega
-                      ? "bg-emerald-500/10 border-emerald-500 text-white"
-                      : "bg-[#080808] border-[#222] text-gray-300 hover:border-[#333]"
+                      ? "bg-rose-50/70 border-rose-500 shadow-xs"
+                      : "bg-white border-slate-200 hover:border-rose-300"
                   }`}
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-rose-600">
                       Opción A • Recomendado
                     </span>
-                    {!fallbackBodega && <CheckCircle2 size={18} className="text-emerald-400" />}
+                    {!fallbackBodega && <CheckCircle2 size={18} className="text-rose-600" />}
                   </div>
-                  <div className="font-bold text-base">Modo Estricto (Detectar Quiebre en Góndola)</div>
-                  <p className="text-xs text-gray-400 mt-2 leading-relaxed">
-                    Descuenta <strong>únicamente de Vitrina</strong>. Si la góndola figura en 0 unidades, genera una
-                    alerta de <strong>Quiebre Visual / Discrepancia</strong> para obligar a registrar la reposición
-                    desde Bodega.
+                  <div className="font-extrabold text-sm text-slate-900">
+                    Avisar falta de reposición en vitrina
+                  </div>
+                  <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                    Descuenta solo de vitrina. Si se vende algo cuando el sistema marca 0 en sala, te crea una{" "}
+                    <strong>alerta</strong> para recordar reponer desde bodega.
                   </p>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setFallbackBodega(true)}
-                  className={`p-5 rounded-2xl border text-left transition-all ${
+                  className={`p-5 rounded-2xl border-2 text-left transition-all cursor-pointer ${
                     fallbackBodega
-                      ? "bg-emerald-500/10 border-emerald-500 text-white"
-                      : "bg-[#080808] border-[#222] text-gray-300 hover:border-[#333]"
+                      ? "bg-rose-50/70 border-rose-500 shadow-xs"
+                      : "bg-white border-slate-200 hover:border-rose-300"
                   }`}
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
-                      Opción B • Venta Continua
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+                      Opción B • Descuento continuo
                     </span>
-                    {fallbackBodega && <CheckCircle2 size={18} className="text-emerald-400" />}
+                    {fallbackBodega && <CheckCircle2 size={18} className="text-rose-600" />}
                   </div>
-                  <div className="font-bold text-base">Modo Continuo (Respaldo Automático a Bodega)</div>
-                  <p className="text-xs text-gray-400 mt-2 leading-relaxed">
-                    Si el stock en Vitrina llega a 0, descuenta automáticamente del lote más próximo a vencer en la{" "}
-                    <strong>Bodega / Trastienda</strong>. Ideal si despachas directo desde trastienda.
+                  <div className="font-extrabold text-sm text-slate-900">
+                    Tomar automático desde bodega
+                  </div>
+                  <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                    Si la vitrina llega a 0, descuenta automáticamente del lote más cercano a vencer en{" "}
+                    <strong>bodega</strong> sin detener el conteo.
                   </p>
                 </button>
               </div>
@@ -427,72 +410,76 @@ export function OnboardingWizardModal({
           )}
 
           {step === 4 && (
-            <div className="space-y-5">
+            <div className="space-y-4">
               <div>
-                <h3 className="text-lg font-bold text-white">
-                  4. Nivel de Trazabilidad en Recepción y Módulos Opcionales
+                <h3 className="text-base font-extrabold text-slate-900">
+                  4. Ingreso de mercadería y secciones del menú
                 </h3>
-                <p className="text-xs text-gray-400 mt-1">
-                  ¿Manejas perecibles críticos / etiquetas industriales GS1-128 o prefieres ingreso rápido por unidades?
+                <p className="text-xs text-slate-500 mt-1">
+                  Elige si prefieres un ingreso rápido al recibir proveedores o etiquetas con lote detallado.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <button
                   type="button"
-                  onClick={() => setUsesGs1Fefo(true)}
-                  className={`p-4 rounded-2xl border text-left transition-all ${
-                    usesGs1Fefo
-                      ? "bg-emerald-500/10 border-emerald-500 text-white"
-                      : "bg-[#080808] border-[#222] text-gray-300 hover:border-[#333]"
+                  onClick={() => setUsesGs1Fefo(false)}
+                  className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer ${
+                    !usesGs1Fefo
+                      ? "bg-rose-50/70 border-rose-500 shadow-xs"
+                      : "bg-white border-slate-200 hover:border-rose-300"
                   }`}
                 >
-                  <div className="flex items-center gap-2 font-bold text-sm">
-                    <ScanBarcode size={18} className="text-emerald-400" />
-                    Control Estricto por Lote, FEFO y GS1-128
+                  <div className="flex items-center gap-2 font-extrabold text-sm text-slate-900">
+                    <PackageCheck
+                      size={18}
+                      className={!usesGs1Fefo ? "text-rose-600" : "text-slate-400"}
+                    />
+                    Ingreso Rápido (Abarrotes y Bebidas)
                   </div>
-                  <p className="text-xs text-gray-400 mt-1.5">
-                    Habilita el decodificador completo de etiquetas frigoríficas GS1-128 y pallets LPN en Recepción
-                    Bodega.
+                  <p className="text-xs text-slate-600 mt-1.5">
+                    Pide solo código de barra y cantidad recibida; el vencimiento es opcional.
                   </p>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => setUsesGs1Fefo(false)}
-                  className={`p-4 rounded-2xl border text-left transition-all ${
-                    !usesGs1Fefo
-                      ? "bg-emerald-500/10 border-emerald-500 text-white"
-                      : "bg-[#080808] border-[#222] text-gray-300 hover:border-[#333]"
+                  onClick={() => setUsesGs1Fefo(true)}
+                  className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer ${
+                    usesGs1Fefo
+                      ? "bg-rose-50/70 border-rose-500 shadow-xs"
+                      : "bg-white border-slate-200 hover:border-rose-300"
                   }`}
                 >
-                  <div className="flex items-center gap-2 font-bold text-sm">
-                    <PackageCheck size={18} className="text-emerald-400" />
-                    Control Ágil por Unidades Simples (Abarrotes)
+                  <div className="flex items-center gap-2 font-extrabold text-sm text-slate-900">
+                    <ScanBarcode
+                      size={18}
+                      className={usesGs1Fefo ? "text-rose-600" : "text-slate-400"}
+                    />
+                    Control Estricto por Lote y Etiqueta
                   </div>
-                  <p className="text-xs text-gray-400 mt-1.5">
-                    Simplifica Recepción Bodega pidiendo únicamente código EAN/SKU y cantidad, con vencimiento
-                    opcional.
+                  <p className="text-xs text-slate-600 mt-1.5">
+                    Activa lectura de etiquetas completas (cajas de frío / perecibles con fecha exacta).
                   </p>
                 </button>
               </div>
 
-              <div className="p-4 rounded-xl bg-[#080808] border border-[#1f1f1f] space-y-3">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-400">
-                  <Layers size={14} className="text-emerald-400" />
-                  Personalizar Módulos Adicionales del Menú Lateral
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3">
+                <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-slate-600">
+                  <Layers size={14} className="text-rose-600" />
+                  Vistas opcionales visibles en el menú lateral
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {OPTIONAL_MODULES_LIST.map((mod) => (
                     <label
                       key={mod.id}
-                      className="flex items-center gap-2.5 p-2.5 rounded-lg bg-[#111] border border-[#222] text-xs text-gray-200 cursor-pointer"
+                      className="flex items-center gap-2.5 p-3 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-700 cursor-pointer hover:border-rose-300 transition"
                     >
                       <input
                         type="checkbox"
                         checked={enabledModules.includes(mod.id)}
                         onChange={() => toggleOptionalModule(mod.id)}
-                        className="accent-emerald-500"
+                        className="accent-rose-600 w-4 h-4"
                       />
                       <span>{mod.label}</span>
                     </label>
@@ -503,26 +490,26 @@ export function OnboardingWizardModal({
           )}
 
           {errorMsg && (
-            <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-500/40 text-red-200 text-xs">
+            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-300 text-rose-800 text-xs font-bold">
               {errorMsg}
             </div>
           )}
         </div>
 
         {/* Pie del Modal */}
-        <div className="p-6 border-t border-[#1f1f1f] bg-[#0a0a0a] flex items-center justify-between">
+        <div className="p-5 sm:p-6 border-t border-rose-100 bg-rose-50/30 flex items-center justify-between gap-3">
           {step > 1 ? (
             <button
               type="button"
               onClick={() => setStep((s) => Math.max(1, s - 1))}
-              className="px-4 py-2.5 rounded-xl bg-[#161616] hover:bg-[#222] border border-[#2a2a2a] text-xs font-semibold text-gray-200 flex items-center gap-2"
+              className="px-4 py-2.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 flex items-center gap-2 shadow-2xs cursor-pointer transition"
             >
               <ArrowLeft size={15} />
               Anterior
             </button>
           ) : (
-            <div className="text-xs text-gray-500">
-              Puedes reconfigurar este perfil cuando quieras desde la barra lateral.
+            <div className="text-xs text-slate-500">
+              Puedes cambiar estas preferencias en cualquier momento.
             </div>
           )}
 
@@ -530,14 +517,10 @@ export function OnboardingWizardModal({
             <button
               type="button"
               onClick={() => {
-                if (step === 2 && posMode === "reference_pos" && !acceptedSiiDisclaimer) {
-                  setErrorMsg("Por favor confirma la lectura del aviso de Modo Demo antes de continuar.");
-                  return;
-                }
                 setErrorMsg(null);
                 setStep((s) => Math.min(4, s + 1));
               }}
-              className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs flex items-center gap-2 transition-colors"
+              className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-700 hover:to-rose-600 text-white font-bold text-xs flex items-center gap-2 shadow-md shadow-rose-200 transition cursor-pointer"
             >
               Siguiente
               <ArrowRight size={15} />
@@ -547,17 +530,17 @@ export function OnboardingWizardModal({
               type="button"
               onClick={handleSave}
               disabled={isSaving}
-              className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-bold text-xs flex items-center gap-2 transition-colors"
+              className="px-6 py-2.5 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-700 hover:to-rose-600 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-2 shadow-md shadow-rose-200 transition cursor-pointer"
             >
               {isSaving ? (
                 <>
                   <Loader2 size={15} className="animate-spin" />
-                  Guardando Perfil...
+                  Guardando...
                 </>
               ) : (
                 <>
                   <CheckCircle2 size={15} />
-                  Aplicar Perfil Operativo
+                  Guardar configuración
                 </>
               )}
             </button>

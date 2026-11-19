@@ -29,8 +29,8 @@ export function PageLayout({ children }: { children: ReactNode }) {
       }`}
     >
       <Sidebar />
-      <main
-        className="flex-1 flex flex-col overflow-y-auto"
+      <div
+        className="flex-1 flex flex-col overflow-y-auto min-w-0"
         style={
           pathname === "/ajustes"
             ? { background: "linear-gradient(135deg, #fcecee 0%, #f7f8fc 50%, #edf1f7 100%)" }
@@ -40,7 +40,7 @@ export function PageLayout({ children }: { children: ReactNode }) {
         }
       >
         {children}
-      </main>
+      </div>
       <ModoPistolaModal />
     </div>
   );

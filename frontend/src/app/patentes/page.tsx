@@ -1547,7 +1547,7 @@ export default function PatentesPage() {
             <div className="space-y-0.5">
               <div className="flex items-center gap-2.5">
                 <h1 className="text-xl md:text-2xl font-extrabold text-slate-900 tracking-tight">
-                  Plano 2D Interactivo
+                  Mapa del Local
                 </h1>
                 {hasUnsavedChanges && (
                   <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 border border-amber-300 text-amber-700 shrink-0">
@@ -1641,10 +1641,10 @@ export default function PatentesPage() {
                   ? "bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-600 text-white shadow-rose-200 ring-2 ring-rose-300"
                   : "bg-gradient-to-r from-rose-600 to-rose-500 text-white shadow-rose-200"
               }`}
-              title="Persistir cambios del plano en PostgreSQL"
+              title="Guardar los cambios de distribución de tu tienda"
             >
               <Save size={14} />
-              <span>{isSavingBD ? "Guardando..." : "Guardar en BD"}</span>
+              <span>{isSavingBD ? "Guardando..." : "Guardar cambios"}</span>
             </button>
 
             <button
@@ -1793,7 +1793,7 @@ export default function PatentesPage() {
                       : "bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-semibold"
                   }`}
                 >
-                  Radar FEFO
+                  Por vencer pronto
                 </button>
 
                 <button
@@ -1805,7 +1805,7 @@ export default function PatentesPage() {
                       : "bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-semibold"
                   }`}
                 >
-                  Rotación Ventas (ABC)
+                  Más vendidos (ABC)
                 </button>
 
                 {capaActiva === "abc" && (
@@ -2524,7 +2524,7 @@ export default function PatentesPage() {
                 <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-xs text-amber-900 space-y-1.5">
                   <p className="font-bold">Góndola recién agregada</p>
                   <p className="text-amber-800">
-                    Haz clic en <strong>Guardar en BD</strong> arriba a la derecha para activar su control de inventario.
+                    Haz clic en <strong>Guardar cambios</strong> arriba a la derecha para activar su control de inventario.
                   </p>
                 </div>
               ) : (
@@ -2564,13 +2564,13 @@ export default function PatentesPage() {
                           </div>
                           <div className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-3.5">
                             <span className="text-[11px] font-semibold text-slate-500 block">
-                              Surtido Activo
+                              Productos en mueble
                             </span>
                             <div className="text-xl font-black text-emerald-700">
                               {skusEsperados > 0
                                 ? `${skusActivos} / ${skusEsperados}`
                                 : skusActivos}{" "}
-                              SKUs
+                              prod.
                             </div>
                           </div>
                         </div>

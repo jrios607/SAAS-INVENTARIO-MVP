@@ -49,7 +49,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     elementId: "tour-kpis",
     title: "Métricas de Sincronización",
-    desc: "Monitorea boletas procesadas hoy, unidades descontadas bajo el criterio FEFO y posibles incidencias de productos no registrados.",
+    desc: "Monitorea boletas procesadas hoy, unidades descontadas (priorizando lo que vence antes) y posibles productos de caja sin vincular.",
   },
   {
     elementId: "tour-config",
@@ -70,12 +70,29 @@ function formatShortTime(isoString?: string | null): string {
       isoString.endsWith("Z") || isoString.includes("+") ? isoString : `${isoString}Z`;
     return new Intl.DateTimeFormat("es-CL", {
       timeZone: "America/Santiago",
-      hour: "numeric",
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
       minute: "2-digit",
     }).format(new Date(normalized));
   } catch {
     return isoString;
   }
+}
+
+function formatPosSource(src?: string | null): string {
+  if (!src) return "Caja POS";
+  const key = src.toUpperCase();
+  const map: Record<string, string> = {
+    BSALE_POS: "Bsale",
+    LOYVERSE_POS: "Loyverse",
+    SHOPIFY_POS: "Shopify",
+    SOFTLAND_ERP_POS: "Softland",
+    FACTURACION_CL: "Facturacion.cl",
+    CAJA_TRADICIONAL_Z: "Caja Tradicional",
+    ARCHIVO_POS: "Planilla / Archivo",
+  };
+  return map[key] || src;
 }
 
 export default function VentasExternasPage() {
@@ -553,7 +570,7 @@ export default function VentasExternasPage() {
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="space-y-1">
             <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-              Ventas Externas (POS)
+              Ventas de Caja (POS)
             </h1>
             <p className="text-xs text-slate-500">
               Sincroniza tus ventas para actualizar el stock automáticamente.
@@ -786,7 +803,7 @@ export default function VentasExternasPage() {
               Conexión Automática en Vivo
             </h3>
             <p className="text-xs text-slate-400">
-              Integra Bsale, Loyverse, Shopify POS o ERPs en tiempo real.
+              Integra Bsale, Loyverse, Shopify u otros sistemas de caja en tiempo real.
             </p>
           </div>
         </div>
@@ -1087,12 +1104,12 @@ export default function VentasExternasPage() {
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-50/80 text-slate-400 font-bold uppercase tracking-wider text-[11px] border-b border-slate-200/60">
-                  <th className="py-3.5 px-4 pl-6">Folio</th>
-                  <th className="py-3.5 px-4">Origen POS</th>
+                  <th className="py-3.5 px-4 pl-6">N° Boleta</th>
+                  <th className="py-3.5 px-4">Caja / Origen</th>
                   <th className="py-3.5 px-4">Estado</th>
                   <th className="py-3.5 px-4">Unidades</th>
                   <th className="py-3.5 px-4">Monto</th>
-                  <th className="py-3.5 px-4">Hora</th>
+                  <th className="py-3.5 px-4">Fecha y Hora</th>
                   <th className="py-3.5 px-4 pr-6 text-right">Opciones</th>
                 </tr>
               </thead>
@@ -1123,8 +1140,8 @@ export default function VentasExternasPage() {
                           <td className="py-3.5 px-4 pl-6 font-mono font-bold text-slate-900">
                             {item.external_ticket_id}
                           </td>
-                          <td className="py-3.5 px-4 font-mono text-slate-600">
-                            {item.pos_source}
+                          <td className="py-3.5 px-4 text-slate-700 font-semibold">
+                            {formatPosSource(item.pos_source)}
                           </td>
                           <td className="py-3.5 px-4">
                             {isRevertida ? (

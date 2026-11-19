@@ -36,12 +36,12 @@ const TOUR_STEPS: TourStep[] = [
   {
     targetId: "tour-step-chart",
     title: "2. Desempeño Operativo Mensual",
-    desc: "Compara visualmente la evolución de tus ventas sincronizadas frente a las mermas valorizadas en los últimos meses para controlar la rentabilidad del local.",
+    desc: "Compara visualmente la evolución de tus ventas registradas frente al dinero perdido en mermas en los últimos meses para cuidar la rentabilidad del local.",
   },
   {
     targetId: "tour-step-alerts",
     title: "3. Alertas y Consulta de Detalles",
-    desc: "Haz clic en 'Consultar detalles' sobre cualquier alerta para desplegar la lista exacta de lotes por vencer, productos bajo stock mínimo, diferencias en vitrina o códigos POS sin vincular.",
+    desc: "Haz clic en 'Consultar más detalles' sobre cualquier alerta para desplegar la lista exacta de lotes por vencer, productos bajo stock mínimo, diferencias en vitrina o productos vendidos sin vincular.",
   },
 ];
 
@@ -105,6 +105,11 @@ export default function CentroDeInformacionPage() {
 
   useEffect(() => {
     loadAllData(false);
+    const onInventoryUpdated = () => {
+      loadAllData(false);
+    };
+    window.addEventListener("bvcore:inventory-updated", onInventoryUpdated);
+    return () => window.removeEventListener("bvcore:inventory-updated", onInventoryUpdated);
   }, [loadAllData]);
 
   // Posicionamiento del Tour Guiado
@@ -125,7 +130,7 @@ export default function CentroDeInformacionPage() {
     });
 
     const tooltipWidth = 360;
-    const tooltipHeight = 190;
+    const tooltipHeight = 230;
     let tooltipTop = rect.bottom + padding + 14;
     let tooltipLeft = rect.left;
 
@@ -137,9 +142,10 @@ export default function CentroDeInformacionPage() {
       tooltipLeft = rect.left - padding - tooltipWidth - 16;
     } else {
       const spaceBelow = window.innerHeight - rect.bottom;
-      if (spaceBelow < 210) {
+      if (spaceBelow < tooltipHeight + 20) {
         tooltipTop = Math.max(16, rect.top - padding - tooltipHeight);
       }
+      tooltipTop = Math.max(16, Math.min(tooltipTop, window.innerHeight - tooltipHeight - 16));
       if (tooltipLeft + tooltipWidth > window.innerWidth) {
         tooltipLeft = window.innerWidth - tooltipWidth - 16;
       }
@@ -307,11 +313,11 @@ export default function CentroDeInformacionPage() {
     },
     {
       id: "orphans",
-      titulo: "Códigos POS sin Vincular",
+      titulo: "Productos vendidos sin vincular",
       subtitulo:
         countOrphans > 0
-          ? `${countOrphans} código(s) vendidos pendientes de asociar`
-          : "Todos los códigos POS están vinculados",
+          ? `${countOrphans} producto(s) de caja pendientes de asociar`
+          : "Todos los productos de caja están vinculados",
       count: countOrphans,
       unidadLabel: "códigos",
       severidad: countOrphans > 0 ? "ALERTA" : "OK",
@@ -548,11 +554,11 @@ export default function CentroDeInformacionPage() {
               className="card-stat rounded-3xl p-5 space-y-1.5 cursor-pointer"
               title="Haz clic para consultar el detalle de lotes próximos a vencer"
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-semibold text-slate-500">
                   Riesgo por Vencimiento (7d)
                 </span>
-                <span className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-lg">
+                <span className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-lg shrink-0 whitespace-nowrap">
                   Ver lotes
                 </span>
               </div>
@@ -599,11 +605,11 @@ export default function CentroDeInformacionPage() {
                     Rutina de 10 Minutos
                   </span>
                   <span className="text-xs text-slate-400 font-semibold">
-                    Conteo Cíclico y Excepciones
+                    Revisión diaria · Productos más vendidos
                   </span>
                 </div>
                 <h2 className="text-sm font-extrabold text-slate-900 mt-0.5">
-                  Control de Productos Críticos (Clase A) y Reposición de Vitrina
+                  Control de Productos Más Vendidos y Reposición de Vitrina
                 </h2>
               </div>
             </div>
@@ -641,7 +647,11 @@ export default function CentroDeInformacionPage() {
           {mostrarRutina10Min && (
             <div className="space-y-3">
               <p className="text-xs text-slate-600 leading-relaxed">
-                Verifica físicamente estos {itemsRutina10Min.length} productos clave antes del turno punta. Si el stock en góndola coincide, confírmalo en un clic. Si falta en vitrina, usa la pistola para transferir desde bodega sin descuadrar la caja.
+                Verifica físicamente{" "}
+                {itemsRutina10Min.length === 1
+                  ? "este 1 producto clave"
+                  : `estos ${itemsRutina10Min.length} productos clave`}{" "}
+                antes del turno punta. Si el stock en góndola coincide, confírmalo en un clic. Si falta en vitrina, usa la pistola para transferir desde bodega sin descuadrar la caja.
               </p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -711,12 +721,14 @@ export default function CentroDeInformacionPage() {
                               onClick={() => {
                                 if (typeof window !== "undefined") {
                                   window.dispatchEvent(
-                                    new CustomEvent("bvcore:open-modo-pistola")
+                                    new CustomEvent("bvcore:open-modo-pistola", {
+                                      detail: { sku: prod.sku },
+                                    })
                                   );
                                 }
                               }}
                               className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition cursor-pointer"
-                              title="Pistolear para reponer a vitrina o ajustar"
+                              title="Abrir este producto en Modo Pistola para reponer o ajustar"
                             >
                               Reponer (F2)
                             </button>
@@ -885,7 +897,7 @@ export default function CentroDeInformacionPage() {
                       <span className="w-3 h-3 rounded-full bg-emerald-500 shrink-0" />
                       <div>
                         <div className="text-xs font-extrabold text-slate-900">
-                          Ventas Sincronizadas
+                          Ventas Registradas
                         </div>
                         <div className="text-[11px] text-slate-500">
                           ${pieSummary.totalVentas.toLocaleString("es-CL")} CLP
@@ -902,7 +914,7 @@ export default function CentroDeInformacionPage() {
                       <span className="w-3 h-3 rounded-full bg-rose-600 shrink-0" />
                       <div>
                         <div className="text-xs font-extrabold text-slate-900">
-                          Mermas Valorizadas
+                          Dinero en Mermas
                         </div>
                         <div className="text-[11px] text-slate-500">
                           ${pieSummary.totalMermas.toLocaleString("es-CL")} CLP
@@ -920,11 +932,11 @@ export default function CentroDeInformacionPage() {
             <div className="flex items-center justify-center gap-6 text-xs pt-2">
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-full bg-rose-600" />
-                <span className="text-slate-600 font-semibold">Mermas Valorizadas</span>
+                <span className="text-slate-600 font-semibold">Dinero en Mermas</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-full bg-emerald-500" />
-                <span className="text-slate-600 font-semibold">Ventas Sincronizadas</span>
+                <span className="text-slate-600 font-semibold">Ventas Registradas</span>
               </div>
             </div>
           </div>
@@ -1237,7 +1249,7 @@ export default function CentroDeInformacionPage() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-amber-100 pb-3">
               <div>
                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-700">
-                  Detalle de Alerta · Códigos POS en Cuarentena
+                  Detalle de Alerta · Productos Vendidos Sin Vincular
                 </span>
                 <h3 className="text-sm font-extrabold text-slate-900">
                   Códigos vendidos en caja aún no vinculados al catálogo ({orphansList.length})

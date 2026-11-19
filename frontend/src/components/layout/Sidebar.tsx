@@ -204,7 +204,11 @@ export function Sidebar() {
       refreshSidebarIndicators();
     };
     window.addEventListener("bvcore:tenant-settings-updated", handleUpdated);
-    return () => window.removeEventListener("bvcore:tenant-settings-updated", handleUpdated);
+    window.addEventListener("bvcore:inventory-updated", refreshSidebarIndicators);
+    return () => {
+      window.removeEventListener("bvcore:tenant-settings-updated", handleUpdated);
+      window.removeEventListener("bvcore:inventory-updated", refreshSidebarIndicators);
+    };
   }, [refreshSidebarIndicators]);
 
   useEffect(() => {
@@ -290,53 +294,55 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Sidebar Izquierdo Desplegable al pasar el mouse */}
-      <aside className="sidebar-glass min-h-screen p-4 flex flex-col justify-between sticky top-0 z-40 flex-shrink-0">
-        <div className="space-y-6 flex flex-col">
-          {/* Logo Mini / Completo */}
-          <div className="flex items-center gap-3 px-1 py-1">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-rose-600 to-rose-500 flex items-center justify-center text-white font-black text-sm shadow-md shadow-rose-200 flex-shrink-0">
-              BV
+      {/* Espaciador fijo para evitar saltos de layout al expandir el menú lateral */}
+      <div className="w-[88px] shrink-0 relative z-40">
+        {/* Sidebar Izquierdo Desplegable sobrepuesto al pasar el mouse */}
+        <aside className="sidebar-glass fixed left-0 top-0 bottom-0 h-screen p-4 flex flex-col justify-between z-40 overflow-y-auto">
+          <div className="space-y-6 flex flex-col">
+            {/* Logo Mini / Completo */}
+            <div className="flex items-center gap-3 px-1 py-1">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-rose-600 to-rose-500 flex items-center justify-center text-white font-black text-sm shadow-md shadow-rose-200 flex-shrink-0">
+                BV
+              </div>
+              <div className="nav-label flex flex-col">
+                <span className="font-extrabold text-sm text-slate-900 tracking-tight">BVCore</span>
+                <span className="text-[10px] text-rose-600 font-semibold">Control de tienda</span>
+              </div>
             </div>
-            <div className="nav-label flex flex-col">
-              <span className="font-extrabold text-sm text-slate-900 tracking-tight">BVCore</span>
-              <span className="text-[10px] text-rose-600 font-semibold">Tu gemelo digital</span>
-            </div>
-          </div>
 
-          {/* Lista de Iconos Interactivos */}
-          <div className="space-y-2 flex flex-col">
-            {visibleItems.map((item) => {
-              const isActive = pathname === item.href;
-              const badge = getItemBadge(item.id);
-              const isAlertBadge = badge && (badge.tone === "rose" || badge.tone === "amber");
+            {/* Lista de Iconos Interactivos */}
+            <div className="space-y-2 flex flex-col">
+              {visibleItems.map((item) => {
+                const isActive = pathname === item.href;
+                const badge = getItemBadge(item.id);
+                const isAlertBadge = badge && (badge.tone === "rose" || badge.tone === "amber");
 
-              return (
-                <Link key={item.id} href={item.href} title={badge?.title || item.name}>
-                  <div
-                    className={
-                      isActive
-                        ? "relative w-full h-12 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-500 text-white flex items-center gap-3 px-3 transition shadow-md shadow-rose-200 group cursor-pointer"
-                        : "relative w-full h-12 rounded-2xl bg-slate-50 hover:bg-rose-50 text-slate-600 hover:text-rose-600 border border-slate-200/80 flex items-center gap-3 px-3 transition shadow-2xs group cursor-pointer"
-                    }
-                  >
-                    <div className="relative w-6 h-6 flex items-center justify-center flex-shrink-0">
-                      {item.renderIcon()}
-                      {/* Punto / Contador compacto sobre el ícono cuando hay alerta activa */}
-                      {isAlertBadge && (
-                        <span
-                          className={` -top-1.5 -right-2 min-w-[17px] h-[17px] px-1 rounded-full text-[9px] font-black flex items-center justify-center shadow-xs ${
-                            isActive
-                              ? "bg-white text-rose-600"
-                              : badge.tone === "rose"
-                              ? "bg-rose-600 text-white"
-                              : "bg-amber-500 text-white"
-                          } absolute`}
-                        >
-                          {badge.count > 99 ? "99+" : badge.count}
-                        </span>
-                      )}
-                    </div>
+                return (
+                  <Link key={item.id} href={item.href} title={badge?.title || item.name}>
+                    <div
+                      className={
+                        isActive
+                          ? "relative w-full h-12 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-500 text-white flex items-center gap-3 px-3 transition shadow-md shadow-rose-200 group cursor-pointer"
+                          : "relative w-full h-12 rounded-2xl bg-slate-50 hover:bg-rose-50 text-slate-600 hover:text-rose-600 border border-slate-200/80 flex items-center gap-3 px-3 transition shadow-2xs group cursor-pointer"
+                      }
+                    >
+                      <div className="relative w-6 h-6 flex items-center justify-center flex-shrink-0">
+                        {item.renderIcon()}
+                        {/* Punto / Contador compacto sobre el ícono solo cuando está colapsado */}
+                        {isAlertBadge && (
+                          <span
+                            className={`nav-icon-badge -top-1.5 -right-2 min-w-[17px] h-[17px] px-1 rounded-full text-[9px] font-black flex items-center justify-center shadow-xs ${
+                              isActive
+                                ? "bg-white text-rose-600"
+                                : badge.tone === "rose"
+                                ? "bg-rose-600 text-white"
+                                : "bg-amber-500 text-white"
+                            } absolute`}
+                          >
+                            {badge.count > 99 ? "99+" : badge.count}
+                          </span>
+                        )}
+                      </div>
 
                     <div className="nav-label flex items-center justify-between w-full min-w-0">
                       <span
@@ -427,6 +433,7 @@ export function Sidebar() {
           {SHOW_DEBUG_CONSOLE && <DebugConsole />}
         </div>
       </aside>
+      </div>
 
       <OnboardingWizardModal
         isOpen={isWizardOpen}

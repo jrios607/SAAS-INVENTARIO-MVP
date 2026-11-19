@@ -20,7 +20,7 @@ const MOTIVOS_PRINCIPALES: Array<{
   {
     codigo: "VENCIDO",
     titulo: "Fecha Vencida",
-    subtitulo: "Retiro automático FEFO",
+    subtitulo: "Descuenta el que vence antes",
   },
   {
     codigo: "ROTURA_DANO",
@@ -99,7 +99,7 @@ export default function AjustesBodegaPage() {
 
   // Paso 2: Cantidad y Origen
   const [cantidadMerma, setCantidadMerma] = useState<number>(2);
-  const [customQtyValue, setCustomQtyValue] = useState<string>("2");
+  const [customQtyValue, setCustomQtyValue] = useState<string>("");
   const [isCustomQtyActive, setIsCustomQtyActive] = useState<boolean>(false);
   const [origenMerma, setOrigenMerma] = useState<OrigenMermaCodigo>("AUTO");
 
@@ -315,7 +315,7 @@ export default function AjustesBodegaPage() {
   const infoLoteDetectado = useMemo(() => {
     if (!productoDetectado) {
       return {
-        loteCodigo: "Automático FEFO",
+        loteCodigo: "Automático (vence primero)",
         fechaVencimiento: null as string | null,
         ubicacion: null as string | null,
         stockLote: 0,
@@ -472,7 +472,7 @@ export default function AjustesBodegaPage() {
             <span className="w-4 h-4 rounded-full bg-rose-500 text-white flex items-center justify-center text-[10px] font-bold">
               ?
             </span>
-            Ayuda
+            ¿Cómo funciona?
           </button>
           <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-rose-300 to-pink-400 flex items-center justify-center font-bold text-white text-sm shadow-sm">
             A
@@ -672,7 +672,7 @@ export default function AjustesBodegaPage() {
                   </span>
                   {productoDetectado && (
                     <span className="text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-200 px-2 py-0.5 rounded-md">
-                      Auto-FEFO (Más próximo a vencer)
+                      Automático (Vence primero)
                     </span>
                   )}
                 </div>
@@ -817,11 +817,15 @@ export default function AjustesBodegaPage() {
             <button
               id="tour-step-confirm"
               type="button"
-              disabled={isSubmitting}
+              disabled={isSubmitting || !productoDetectado}
               onClick={handleConfirmMerma}
-              className="w-full mt-4 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 disabled:opacity-60 text-white font-bold py-4 rounded-2xl shadow-lg shadow-rose-500/20 transition transform active:scale-98"
+              className="w-full mt-4 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 disabled:opacity-45 disabled:cursor-not-allowed text-white font-bold py-4 rounded-2xl shadow-lg shadow-rose-500/20 transition transform active:scale-98 cursor-pointer"
             >
-              {isSubmitting ? "Registrando baja de inventario..." : "Confirmar baja de inventario"}
+              {isSubmitting
+                ? "Registrando baja de inventario..."
+                : !productoDetectado
+                ? "Selecciona un producto arriba para continuar"
+                : "Confirmar baja de inventario"}
             </button>
           </div>
         </div>
