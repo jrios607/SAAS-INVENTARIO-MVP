@@ -294,11 +294,9 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Espaciador fijo para evitar saltos de layout al expandir el menú lateral */}
-      <div className="w-[88px] shrink-0 relative z-40">
-        {/* Sidebar Izquierdo Desplegable sobrepuesto al pasar el mouse */}
-        <aside className="sidebar-glass fixed left-0 top-0 bottom-0 h-screen p-4 flex flex-col justify-between z-40 overflow-y-auto">
-          <div className="space-y-6 flex flex-col">
+      {/* Sidebar Izquierdo Desplegable: contrae suavemente el contenido al expandirse */}
+      <aside className="sidebar-glass h-screen p-4 flex flex-col justify-between sticky top-0 z-50 flex-shrink-0 overflow-y-auto">
+        <div className="space-y-6 flex flex-col">
             {/* Logo Mini / Completo */}
             <div className="flex items-center gap-3 px-1 py-1">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-rose-600 to-rose-500 flex items-center justify-center text-white font-black text-sm shadow-md shadow-rose-200 flex-shrink-0">
@@ -433,7 +431,6 @@ export function Sidebar() {
           {SHOW_DEBUG_CONSOLE && <DebugConsole />}
         </div>
       </aside>
-      </div>
 
       <OnboardingWizardModal
         isOpen={isWizardOpen}
